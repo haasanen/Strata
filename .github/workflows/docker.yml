@@ -3,6 +3,8 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 env:
@@ -13,12 +15,32 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Sync with upstream
+        id: sync
+        if: github.event_name != 'push'
+        run: |
+          git remote add upstream https://github.com/Niko1221/Strata.git
+          git fetch upstream main
+          before=$(git rev-parse HEAD)
+          git config user.email "hermes@simo.dev"
+          git config user.name "Hermes Agent"
+          git merge --no-edit upstream/main
+          after=$(git rev-parse HEAD)
+          if [ "$before" = "$after" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "upstream: no new commits"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git log --oneline "$before".."$after" | head -20
+            git push origin HEAD:main
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -41,6 +63,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
+        if: github.event_name == 'push' || steps.sync.outputs.changed == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
