@@ -4390,6 +4390,33 @@ def make_handler(svc: Service):
                 except GpuBusy as e:
                     self._json(503, {"error": {"type": "server_error", "message": str(e)}})
                 return
+            if path == "/switch":                            # fork patch: restart the container on another installed model
+                if not self._own_page("the model can be switched"):
+                    return
+                try:
+                    req = json.loads(self._body() or b"{}")
+                    target = str(req.get("model", ""))
+                except (ValueError, TypeError):
+                    self._json(400, {"error": {"message": 'send {"model": "<family>/<MODEL>", e.g. "qwen/IQ3_S"}'}})
+                    return
+                fam, _, mod = target.partition("/")
+                if not mod:                                  # bare name: the qwen family (empty tag prefix)
+                    fam, mod = "qwen", target
+                prefix = "" if fam == "qwen" else fam + "-"
+                data_dir = Path(svc.config_path).parent.parent if svc.config_path else Path(os.environ.get("STRATA_DATA", "/data"))
+                want = data_dir / "config" / f"strata-{prefix}{mod.lower()}.json"
+                if not want.is_file():
+                    installed = sorted(p.name[len("strata-"):-len(".json")]
+                                       for p in (data_dir / "config").glob("strata-*.json")) if (data_dir / "config").is_dir() else []
+                    self._json(404, {"error": {"message": f"no installed model {target}; installed: {', '.join(installed) or 'none'}"}})
+                    return
+                (data_dir / "config").mkdir(parents=True, exist_ok=True)
+                (data_dir / "config" / "active_model").write_text(f"{fam} {mod}\n")
+                self._json(200, {"status": "switching", "to": f"{fam}/{mod}",
+                                 "note": "the container exits now and restarts on the new model (1-3 min)"})
+                print(f"[strata] /switch: active_model -> {fam} {mod}; exiting for the container's restart policy", flush=True)
+                threading.Timer(1.0, lambda: os._exit(0)).start()
+                return
             try:
                 req = json.loads(self._body() or b"{}")
                 if not isinstance(req, dict):

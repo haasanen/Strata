@@ -32,6 +32,20 @@ tag="${prefix}$(printf '%s' "$MODEL" | tr 'A-Z' 'a-z')"
 cfg="$STRATA_DATA/config/strata-$tag.json"
 mkdir -p "$STRATA_DATA/config"
 
+# fork patch (/switch): config/active_model overrides the MODEL/FAMILY env, so a
+# restart comes up on the model the last switch chose. The file holds "<family>
+# <model>", e.g. "unsloth UD-Q4_K_XL". Delete it to go back to the env settings.
+if [ -f "$STRATA_DATA/config/active_model" ]; then
+  read -r afam amod < "$STRATA_DATA/config/active_model" || true
+  if [ -n "$afam" ] && [ -n "$amod" ]; then
+    echo "active_model: $afam/$amod overrides MODEL=$MODEL FAMILY=$FAMILY"
+    FAMILY="$afam"; MODEL="$amod"
+    case "$FAMILY" in qwen) prefix="" ;; *) prefix="${FAMILY}-" ;; esac
+    tag="${prefix}$(printf '%s' "$MODEL" | tr 'A-Z' 'a-z')"
+    cfg="$STRATA_DATA/config/strata-$tag.json"
+  fi
+fi
+
 # REINSTALL is only needed to change settings for a model that is already set up
 # (context, vision, KV, host, api_key). Switching between models already on the
 # volume needs no setup pass: their config is already there.
