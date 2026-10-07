@@ -68,13 +68,14 @@ jobs:
         id: forkver
         run: |
           # Tag images with the upstream Strata version plus our fork build
-          # number: <upstream>-h<N> (h = haasanen), e.g. 0.1.40-h1 — the
-          # same convention as the Proton fork. The upstream version comes
-          # from CMakeLists.txt (the engine's own project VERSION). N is 1 +
+          # number: <upstream>-h<N> (e.g. 0.1.40.1-h1) — the same convention
+          # as the Proton fork. The upstream version comes from the latest
+          # upstream GitHub release (the authoritative version; hotfix
+          # releases like 0.1.40.1 do not bump CMakeLists.txt). N is 1 +
           # the highest -h<N> already published for that upstream version,
           # read from the ghcr tag list, so it increments on every build.
-          UPSTREAM=$(grep -oE 'project\(strata VERSION [0-9.]+' CMakeLists.txt | grep -oE '[0-9.]+$')
-          test -n "$UPSTREAM" || { echo "::error::could not read upstream version from CMakeLists.txt"; exit 1; }
+          UPSTREAM=$(curl -s "https://api.github.com/repos/Niko1221/Strata/releases/latest" | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+          test -n "$UPSTREAM" || { echo "::error::could not read upstream release version"; exit 1; }
           TOK=$(curl -s "https://ghcr.io/token?scope=repository:${IMAGE_NAME}:pull&service=ghcr.io" | python3 -c "import json,sys;print(json.load(sys.stdin)['token'])")
           LAST=$(curl -s -H "Authorization: Bearer $TOK" "https://ghcr.io/v2/${IMAGE_NAME}/tags/list" | UP="$UPSTREAM" python3 -c "
           import json,os,re,sys
