@@ -27,6 +27,11 @@ KV_STREAMING="${KV_STREAMING:-}" # auto | on | off; empty: setup.py's own defaul
 # this family and model were set up with. The config is the recorded output of
 # that setup (the pack, the profile, the quant, the KV decision), not settings
 # the entry point could rebuild from env vars. qwen has an empty family tag.
+#
+# fork patch (/switch): drop configs left by an earlier start of this container
+# (a restart keeps the filesystem): with two linked configs setup.py asks "Which
+# one?" interactively, hits EOF in a container, and the restart policy loops it.
+rm -f /opt/strata/strata-*.json
 case "$FAMILY" in qwen) prefix="" ;; *) prefix="${FAMILY}-" ;; esac
 tag="${prefix}$(printf '%s' "$MODEL" | tr 'A-Z' 'a-z')"
 cfg="$STRATA_DATA/config/strata-$tag.json"
