@@ -64,6 +64,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute fork version tag
+        id: forkver
+        run: |
+          # Tag images with the upstream Strata version plus our fork build
+          # number: <upstream>-h<N> (h = haasanen), e.g. 0.1.40-h1 — the
+          # same convention as the Proton fork. The upstream version comes
+          # from CMakeLists.txt (the engine's own project VERSION). N is 1 +
+          # the highest -h<N> already published for that upstream version,
+          # read from the ghcr tag list, so it increments on every build.
+          UPSTREAM=$(grep -oE 'project\(strata VERSION [0-9.]+' CMakeLists.txt | grep -oE '[0-9.]+$')
+          test -n "$UPSTREAM" || { echo "::error::could not read upstream version from CMakeLists.txt"; exit 1; }
+          TOK=$(curl -s "https://ghcr.io/token?scope=repository:${IMAGE_NAME}:pull&service=ghcr.io" | python3 -c "import json,sys;print(json.load(sys.stdin)['token'])")
+          LAST=$(curl -s -H "Authorization: Bearer $TOK" "https://ghcr.io/v2/${IMAGE_NAME}/tags/list" | UP="$UPSTREAM" python3 -c "
+          import json,os,re,sys
+          tags=json.load(sys.stdin).get('tags') or []
+          pat=re.compile('^'+re.escape(os.environ['UP'])+r'-h([0-9]+)$')
+          ns=[int(m.group(1)) for t in tags if (m:=pat.match(t))]
+          print(max(ns) if ns else 0)")
+          N=$((LAST + 1))
+          echo "upstream=$UPSTREAM" >> "$GITHUB_OUTPUT"
+          echo "tag=$UPSTREAM-h$N" >> "$GITHUB_OUTPUT"
+          echo "fork version: $UPSTREAM-h$N (highest published for $UPSTREAM: ${LAST:-none})"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -73,6 +96,8 @@ jobs:
             type=ref,event=branch
             type=sha,prefix=
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.forkver.outputs.tag }}
+            type=raw,value=${{ steps.forkver.outputs.upstream }}
 
       - name: Build and push Docker image
         if: github.event_name == 'push' || steps.sync.outputs.changed == 'true'
