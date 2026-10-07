@@ -4425,9 +4425,19 @@ def make_handler(svc: Service):
                 cdir.mkdir(parents=True, exist_ok=True)
                 (cdir / "active_model").write_text(f"{fam} {mod}\n")
                 self._json(200, {"status": "switching", "to": f"{fam}/{mod}",
-                                 "note": "the container exits now and restarts on the new model (1-3 min)"})
-                print(f"[strata] /switch: active_model -> {fam} {mod}; exiting for the container's restart policy", flush=True)
-                threading.Timer(1.0, lambda: os._exit(0)).start()
+                                 "note": "the container restarts once the current request finishes (1-3 min)"})
+                print(f"[strata] /switch: active_model -> {fam} {mod}; exiting when idle", flush=True)
+
+                def _exit_when_idle():
+                    # fork patch: do NOT exit mid-request — the caller's own generation is
+                    # still running (an agent switching its own engine); exiting now kills
+                    # it. Take the FIFO (every request holds it) and keep it: no new
+                    # request can start while we shut down.
+                    deadline = time.time() + 900
+                    while time.time() < deadline and not svc.fifo.acquire(blocking=False):
+                        time.sleep(2)
+                    os._exit(0)
+                threading.Thread(target=_exit_when_idle, daemon=True).start()
                 return
             try:
                 req = json.loads(self._body() or b"{}")
