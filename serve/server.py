@@ -4348,8 +4348,7 @@ def make_handler(svc: Service):
                     self._json(200, svc.v1_status())
             elif path == "/switch":                          # fork patch: the switchable models (see do_POST)
                 if self._authorized():
-                    data_dir = Path(svc.config_path).parent.parent if svc.config_path else Path(os.environ.get("STRATA_DATA", "/data"))
-                    cdir = data_dir / "config"
+                    cdir = self._switch_config_dir(svc)
                     installed = sorted(p.name[len("strata-"):-len(".json")] for p in cdir.glob("strata-*.json")) if cdir.is_dir() else []
                     active = ""
                     try:
@@ -4416,15 +4415,15 @@ def make_handler(svc: Service):
                 if not mod:                                  # bare name: the qwen family (empty tag prefix)
                     fam, mod = "qwen", target
                 prefix = "" if fam == "qwen" else fam + "-"
-                data_dir = Path(svc.config_path).parent.parent if svc.config_path else Path(os.environ.get("STRATA_DATA", "/data"))
-                want = data_dir / "config" / f"strata-{prefix}{mod.lower()}.json"
+                cdir = self._switch_config_dir(svc)
+                want = cdir / f"strata-{prefix}{mod.lower()}.json"
                 if not want.is_file():
                     installed = sorted(p.name[len("strata-"):-len(".json")]
-                                       for p in (data_dir / "config").glob("strata-*.json")) if (data_dir / "config").is_dir() else []
+                                       for p in cdir.glob("strata-*.json")) if cdir.is_dir() else []
                     self._json(404, {"error": {"message": f"no installed model {target}; installed: {', '.join(installed) or 'none'}"}})
                     return
-                (data_dir / "config").mkdir(parents=True, exist_ok=True)
-                (data_dir / "config" / "active_model").write_text(f"{fam} {mod}\n")
+                cdir.mkdir(parents=True, exist_ok=True)
+                (cdir / "active_model").write_text(f"{fam} {mod}\n")
                 self._json(200, {"status": "switching", "to": f"{fam}/{mod}",
                                  "note": "the container exits now and restarts on the new model (1-3 min)"})
                 print(f"[strata] /switch: active_model -> {fam} {mod}; exiting for the container's restart policy", flush=True)
@@ -4600,6 +4599,14 @@ def make_handler(svc: Service):
                                                       f"config's trusted_origins)"}})
                 return False
             return True
+
+        def _switch_config_dir(self, svc):
+            """Fork patch (/switch): the directory holding the strata-*.json configs.
+            The run config is a symlink into the data volume (/opt/strata/strata-<tag>.json
+            -> /data/config/...), so resolve it and take its parent."""
+            if svc.config_path:
+                return Path(svc.config_path).resolve().parent
+            return Path(os.environ.get("STRATA_DATA", "/data")) / "config"
 
         def _config_get(self):
             if not svc.config_path:
