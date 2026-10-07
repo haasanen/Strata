@@ -141,7 +141,10 @@ MODELS = {
     "UD-Q4_K_XL": {"about": "4-bit (Unsloth Dynamic), EXPERIMENTAL: the best quality, but most experts come from the "
                             "SSD on a 64 GB PC (7-8.5 tokens/s measured)", "download_gb": 111.3, "ram_gb": 48,
                    "arena_gb": 77.0, "families": ("unsloth",), "budget": True, "nvidia_only": True,
-                   "experimental": True},
+                   "experimental": True,
+                   # fork patch (#967): same base model and image encoder as the other packs; users ran it by
+                   # hand (issue #967). Upstream plans the same allowance, untested, in 0.1.41.
+                   "vision": True},
     # #621: Unsloth's UD-IQ4_XS - IQ3_S gate/up experts with IQ4_NL (43 layers) or Q8_0 (5) downs, the dense side as
     # UD-Q4_K_XL's; three shards.  A regular choice from 0.1.39 (no longer experimental).  Its 59.5 GB of experts: a
     # RAM budget of them, like UD-Q4_K_XL, but far fewer read from the SSD on a 64 GB PC and none from ~80 GB of RAM.
@@ -4525,7 +4528,7 @@ def main() -> int:
         kv = ["int8", "q4_0"][int(ask("KV cache?", ["1", "2"], "1", a.yes)) - 1]
     if ctx > 8192:
         ok(f"KV cache: {'8-bit' if kv == 'int8' else '4-bit (Hadamard-rotated)'}")
-    if MODELS[model].get("vision", fam.get("vision")) is False:     # UD-IQ4_XS: images, unlike UD-Q4_K_XL
+    if MODELS[model].get("vision", fam.get("vision")) is False:     # fork patch: UD-Q4_K_XL now has vision too (#967)
         vision = "none"
         if a.vision not in (None, "no", "none"):
             warn(f"images are not available with {model} yet: off")
