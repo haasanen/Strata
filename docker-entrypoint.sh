@@ -64,6 +64,37 @@ else
   ln -sfn "$cfg" "/opt/strata/strata-$tag.json"
 fi
 
+# EXTRA_ENGINE_ARGS: engine arguments to keep in the config across starts and
+# reinstalls (fork patch; upstream's setup rewrites the config and drops hand
+# edits). Space-separated, e.g. "--prefill auto:32768 --conversation-cache-mib
+# 8192". Each flag replaces the config's value for it, or is appended.
+if [ -n "${EXTRA_ENGINE_ARGS:-}" ]; then
+  .venv/bin/python - "$cfg" <<'PYEOF'
+import json, sys, shlex
+path = sys.argv[1]
+extra = shlex.split(__import__("os").environ["EXTRA_ENGINE_ARGS"])
+with open(path) as f:
+    cfg = json.load(f)
+args = cfg.setdefault("args", [])
+i = 0
+while i < len(extra):
+    flag = extra[i]
+    val = extra[i + 1] if i + 1 < len(extra) and not extra[i + 1].startswith("--") else None
+    if flag in args:
+        at = args.index(flag)
+        if val is None:
+            args[at:at + 1] = [flag]
+        else:
+            args[at:at + 2] = [flag, val]
+    else:
+        args += [flag] + ([val] if val is not None else [])
+    i += 2 if val is not None else 1
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+print("EXTRA_ENGINE_ARGS merged into", path)
+PYEOF
+fi
+
 # Later starts skip straight here: setup.py finds the installed config and
 # launches serve/server.py (OpenAI- and Anthropic-compatible API on :8080).
 # GPUS / GPU / LAYER_SPLIT are repeated on purpose. Given at the start they pin the
