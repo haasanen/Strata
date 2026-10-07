@@ -4346,6 +4346,19 @@ def make_handler(svc: Service):
             elif path == "/v1/status":
                 if self._authorized():
                     self._json(200, svc.v1_status())
+            elif path == "/switch":                          # fork patch: the switchable models (see do_POST)
+                if self._authorized():
+                    data_dir = Path(svc.config_path).parent.parent if svc.config_path else Path(os.environ.get("STRATA_DATA", "/data"))
+                    cdir = data_dir / "config"
+                    installed = sorted(p.name[len("strata-"):-len(".json")] for p in cdir.glob("strata-*.json")) if cdir.is_dir() else []
+                    active = ""
+                    try:
+                        active = (cdir / "active_model").read_text().split()
+                        active = f"{active[0]}/{active[1]}" if len(active) == 2 else ""
+                    except OSError:
+                        pass                                 # no active_model: the compose env's model is active
+                    self._json(200, {"object": "list", "data": installed, "running": svc.model,
+                                     "active_model": active or "(compose env)"})
             else:
                 self._json(404, {"error": {"message": "not found"}})
 
