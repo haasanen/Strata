@@ -26,19 +26,32 @@ jobs:
           # which a shallow (depth=1) clone cannot provide — git then
           # refuses with "unrelated histories" even when they are related.
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Sync with upstream
+      - name: Sync with upstream (released versions only)
         id: sync
         if: github.event_name != 'push'
         run: |
+          # Merge only what upstream has RELEASED: the commit their latest
+          # GitHub release points at, never the moving main branch. A new
+          # release appearing is the only thing that triggers a merge;
+          # unreleased main commits wait until upstream ships them.
           git remote add upstream https://github.com/Niko1221/Strata.git
-          git fetch upstream main
+          REL=$(curl -s "https://api.github.com/repos/Niko1221/Strata/releases/latest" | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'])")
+          test -n "$REL" || { echo "::error::could not read the latest upstream release"; exit 1; }
+          echo "latest upstream release: $REL"
+          git fetch upstream "refs/tags/${REL}:refs/tags/${REL}"
+          if git merge-base --is-ancestor "${REL}^{commit}" HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "upstream: no new release (fork already contains $REL)"
+            exit 0
+          fi
           before=$(git rev-parse HEAD)
           git config user.email "hermes@simo.dev"
           git config user.name "Hermes Agent"
-          if ! git merge --no-edit upstream/main; then
-            if git merge-base HEAD upstream/main >/dev/null 2>&1; then
-              echo "::error::upstream merge hit real conflicts — resolve manually"
+          if ! git merge --no-edit "${REL}^{commit}"; then
+            if git merge-base HEAD "${REL}^{commit}" >/dev/null 2>&1; then
+              echo "::error::merging release $REL hit real conflicts — resolve manually"
             else
               echo "::error::upstream rewrote its history (no common ancestor) — re-anchor the fork onto upstream/main and force-push"
             fi
@@ -47,9 +60,10 @@ jobs:
           after=$(git rev-parse HEAD)
           if [ "$before" = "$after" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "upstream: no new commits"
+            echo "upstream: nothing new in $REL"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "release_note=$REL" >> "$GITHUB_OUTPUT"
             git log --oneline "$before".."$after" | head -20
             git push origin HEAD:main
           fi
