@@ -21,6 +21,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Full history: the upstream sync merge needs a common ancestor,
+          # which a shallow (depth=1) clone cannot provide — git then
+          # refuses with "unrelated histories" even when they are related.
+          fetch-depth: 0
 
       - name: Sync with upstream
         id: sync
@@ -31,7 +36,14 @@ jobs:
           before=$(git rev-parse HEAD)
           git config user.email "hermes@simo.dev"
           git config user.name "Hermes Agent"
-          git merge --no-edit upstream/main
+          if ! git merge --no-edit upstream/main; then
+            if git merge-base HEAD upstream/main >/dev/null 2>&1; then
+              echo "::error::upstream merge hit real conflicts — resolve manually"
+            else
+              echo "::error::upstream rewrote its history (no common ancestor) — re-anchor the fork onto upstream/main and force-push"
+            fi
+            exit 1
+          fi
           after=$(git rev-parse HEAD)
           if [ "$before" = "$after" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
