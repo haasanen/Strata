@@ -11,6 +11,15 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: haasanen/strata
 
+# Two pushes in quick succession must not race on the -h<N> counter: each build
+# reads the highest published tag at its START, so parallel builds both pick the
+# same N and the second overwrites the first's tag (seen 2026-10-07: two builds
+# both tagged 0.1.40.3-h3). Serialize: the second build starts after the first
+# publishes, so its counter read sees the new tag.
+concurrency:
+  group: strata-build-push
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest

@@ -95,6 +95,19 @@ extra = shlex.split(__import__("os").environ["EXTRA_ENGINE_ARGS"])
 with open(path) as f:
     cfg = json.load(f)
 args = cfg.setdefault("args", [])
+# server-only options: the Python server reads them from the config JSON, the
+# engine binary rejects them on its command line. Never leave them in args.
+SERVER_ONLY = {"--fit-max-tokens"}
+clean, j = [], 0
+while j < len(args):
+    if args[j] in SERVER_ONLY:
+        j += 2 if j + 1 < len(args) and not args[j + 1].startswith("--") else 1
+    else:
+        clean.append(args[j]); j += 1
+args[:] = clean
+if __import__("os").environ.get("EXTRA_CONFIG_JSON"):
+    cfg.update(json.loads(__import__("os").environ["EXTRA_CONFIG_JSON"]))
+    print("EXTRA_CONFIG_JSON merged into", path)
 i = 0
 while i < len(extra):
     flag = extra[i]
