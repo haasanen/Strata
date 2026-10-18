@@ -112,6 +112,45 @@ else
   echo "Config: $cfg (from MODEL $MODEL)"
 fi
 
+# Fork patch: a config written by a MANUAL setup.py run (setup saves it next to
+# itself in /opt/strata, with desktop defaults) must serve like one the
+# entrypoint wrote: force "host" from HOST (default 0.0.0.0; a container config
+# bound to 127.0.0.1 is unreachable from the host), and - only when VISION is
+# set in the environment - place the vision encoder as VISION says (a manual
+# setup auto-places it on the GPU and costs 700 MiB of expert VRAM). Unset
+# VISION: the config's own placement stands. (2026-10-18: a manual install of
+# the abliterated model served on 127.0.0.1 and put the encoder on the GPU.)
+served="$cfg"
+[ -L "$link" ] && served="$(readlink "$link")"      # the keep/CONFIG paths serve the link's target
+.venv/bin/python - "$served" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except (OSError, ValueError):
+    sys.exit(0)                                     # a later start path will report it
+changed = False
+want_host = os.environ.get("HOST") or "0.0.0.0"
+if cfg.get("host") != want_host:
+    cfg["host"] = want_host
+    changed = True
+    print(f"host normalized to {want_host} (container config)")
+vision = os.environ.get("VISION")                   # set in compose = the placement the container wants
+vis = cfg.get("vision")
+if vision and isinstance(vis, dict):
+    on_gpu = vision in ("yes", "gpu")
+    if bool(vis.get("gpu")) != on_gpu:
+        vis["gpu"] = on_gpu
+        if not on_gpu:
+            vis["threads"] = max(1, (os.cpu_count() or 8) // 2)
+        changed = True
+        print(f"vision encoder placed on the {('GPU' if on_gpu else 'CPU')} (VISION={vision})")
+if changed:
+    with open(path, "w") as f:
+        json.dump(cfg, f, indent=2)
+PYEOF
+
 # EXTRA_ENGINE_ARGS: engine arguments to keep in the config across starts and
 # reinstalls (fork patch; upstream's setup rewrites the config and drops hand
 # edits). Space-separated, e.g. "--prefill auto:32768 --conversation-cache-mib

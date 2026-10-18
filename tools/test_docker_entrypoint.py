@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,7 @@ class Entrypoint(unittest.TestCase):
         # the stub "python": setup.py --setup writes the config the way setup does; a plain start prints what it would load
         stub = self.opt / ".venv" / "bin" / "python"
         stub.write_text('#!/bin/sh\nif [ "$2" = "--setup" ]; then echo \'{"args": ["from-setup"]}\' > strata-iq3_s.json\n'
+                        'elif [ "$1" = "-" ]; then exec ' + sys.executable + ' "$@"\n'   # entrypoint inline scripts: the real python\n
                         'else echo "STARTED WITH: $(cat strata-iq3_s.json)"; fi\n', encoding="utf-8")
         stub.chmod(0o755)
         script = (ROOT / "docker-entrypoint.sh").read_text(encoding="utf-8").replace("/opt/strata", str(self.opt))
