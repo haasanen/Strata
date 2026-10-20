@@ -20,7 +20,7 @@ import setup  # noqa: E402
 class FamilyOrder(unittest.TestCase):
     def test_the_menu_order_on_nvidia(self):
         fams = setup.menu_families(False) + list(setup.OWN_PATH_FAMILIES)
-        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro", "nvfp4", "qwen36"])
+        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro", "nvfp4", "abliterated", "qwen36"])  # fork patch: abliterated (SC117) added after nvfp4
 
     def test_the_default_stays_the_first_family(self):
         self.assertEqual(setup.menu_families(False)[0], "qwen")
@@ -29,7 +29,7 @@ class FamilyOrder(unittest.TestCase):
     def test_nvfp4_is_not_listed_on_amd_and_intel(self):
         fams = setup.menu_families(True)
         self.assertNotIn("nvfp4", fams)
-        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro"])
+        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro", "abliterated"])  # fork patch: abliterated (SC117) added last
         self.assertIn("nvfp4", setup.FAMILIES)             # --family nvfp4 still exists, and says why not
 
     def test_the_unsloth_line_names_the_alternative_on_amd_and_intel(self):
