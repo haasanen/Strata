@@ -70,6 +70,9 @@ FROM ${RUNTIME_BASE} AS terminal
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates git && rm -rf /var/lib/apt/lists/*
 COPY . /src/
+# the sources have no .git here (dockerignored): the CI passes the commit the build is from, package_terminal.py writes it to COMMIT
+ARG STRATA_COMMIT=
+ENV STRATA_COMMIT=${STRATA_COMMIT}
 RUN python3 /src/packaging/package_terminal.py --out /out --cache /cache \
  && mkdir -p /opt/strata \
  && tar -xzf /out/strata-terminal-*-linux-x86_64.tar.gz -C /opt/strata \
