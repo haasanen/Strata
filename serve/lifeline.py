@@ -99,11 +99,16 @@ pid, token = int(sys.argv[1]), sys.argv[2]
 for s in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM):
     signal.signal(s, signal.SIG_IGN)               # it ends with its pipe, not with the terminal
 def start_of(p):
+    # only the start time goes in the token: the STAT column changes while a process lives (R, S),
+    # and a token that changes mid-life makes the watcher skip the kill and the child outlive us
     try:
-        out = subprocess.run(["ps", "-o", "lstart=,stat=", "-p", str(p)], capture_output=True, text=True, timeout=5).stdout.strip()
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(p)], capture_output=True, text=True, timeout=5).stdout.strip()
     except Exception:
         return None
-    return None if not out or out.endswith("Z") else "s:" + out
+    if not out:
+        return None
+    st = subprocess.run(["ps", "-o", "stat=", "-p", str(p)], capture_output=True, text=True, timeout=5).stdout.strip()
+    return None if st.endswith("Z") else "s:" + out
 os.set_blocking(0, True)
 data = b""
 while True:
@@ -134,12 +139,17 @@ _watchers_lock = threading.Lock()
 
 
 def _start_token(pid: int) -> str:
+    # the start time only: STAT changes while a process lives, and the token must not (see _WATCHER)
     try:
-        out = subprocess.run(["ps", "-o", "lstart=,stat=", "-p", str(pid)], capture_output=True, text=True,
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
                              timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
-    return "" if not out or out.endswith("Z") else "s:" + out
+    if not out:
+        return ""
+    st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True,
+                        timeout=5).stdout.strip()
+    return "" if st.endswith("Z") else "s:" + out
 
 
 def _watch(child: subprocess.Popen) -> None:
