@@ -133,3 +133,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             CUDA_ARCHITECTURES=89
+            STRATA_COMMIT=${{ github.sha }}
