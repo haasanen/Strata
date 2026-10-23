@@ -226,7 +226,31 @@ if [ -n "$roles" ]; then
   set -- "$@" --gpu-roles "$roles"; have=1
 fi
 [ -n "${STRATA_SET:-}" ] && { for kv in $STRATA_SET; do set -- "$@" --set "$kv"; done; have=1; }
-[ -n "$key" ] && { set -- "$@" --api-key-env STRATA_LAUNCH_KEY; }
+
+# ---- fork patch (h2): the old images served without a key unless one was set; 0.2.x invents one when
+# the server is shared. Keep the old behavior: no key at all unless API_KEY/API_KEY_FILE gives one.
+if [ -n "$key" ]; then set -- "$@" --api-key-env STRATA_LAUNCH_KEY; else set -- "$@" --no-api-key; fi
+
+# ---- fork patch (h2): EXTRA_ENGINE_ARGS from the old compose ("--prefill auto:32768 --kv-flag")
+# -> the 0.2.x way, `--set prefill=auto:32768` / `--set kv-flag=on`. A flag with no value becomes "on".
+if [ -n "${EXTRA_ENGINE_ARGS:-}" ]; then
+  _ex=""
+  for w in $EXTRA_ENGINE_ARGS; do
+    case "$w" in
+      --*) if [ -n "$_ex" ]; then case "$_ex" in *=) set -- "$@" --set "$_ex""on";; *) set -- "$@" --set "$_ex";; esac; fi
+           _ex="${w#--}=" ;;
+      *)   _ex="$_ex$w" ;;
+    esac
+  done
+  if [ -n "$_ex" ]; then case "$_ex" in *=) _ex="$_ex""on";; esac; set -- "$@" --set "$_ex"; fi
+  say "EXTRA_ENGINE_ARGS applied as --set settings (fork patch): $EXTRA_ENGINE_ARGS"
+fi
+
+# ---- fork patch (h2): EXTRA_CONFIG_JSON is retired. 0.2.x writes the run settings itself, and the only key
+# this deployment ever used (fit_max_tokens) is the built-in default here (serve/server.py: default True).
+if [ -n "${EXTRA_CONFIG_JSON:-}" ]; then
+  die "EXTRA_CONFIG_JSON is not used by this image (0.2.x writes the run settings itself). fit_max_tokens is on by default here; if you need other engine settings, use EXTRA_ENGINE_ARGS or STRATA_SET (docs at the top). Remove the EXTRA_CONFIG_JSON line from compose." 2
+fi
 
 # tune once: ask only when this preset has not been tuned yet (a restart must not tune again for 20 minutes)
 tune_mode=$(printf '%s' "${TUNE:-}" | tr 'A-Z' 'a-z')
