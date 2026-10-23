@@ -77,7 +77,9 @@ jobs:
             # push with the PAT, not GITHUB_TOKEN: a merge often carries upstream's
             # .github/workflows changes, and the runner's App token may not write those
             git config --local --unset-all 'http.https://github.com/.extraheader' || true
-            git config --local http.https://github.com/.extraheader "AUTHORIZATION: bearer ${FORK_PAT}"
+            # basic x-access-token form: the form proven to work for this fork (the
+            # bearer form got 401 on the runner: "could not read Username")
+            git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$FORK_PAT" | base64 -w0)"
             git push origin HEAD:main
             git config --local --unset-all 'http.https://github.com/.extraheader' || true
           fi
