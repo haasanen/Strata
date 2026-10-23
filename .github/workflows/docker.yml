@@ -73,9 +73,16 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "release_note=$REL" >> "$GITHUB_OUTPUT"
-            git log --oneline "$before".."$after" | head -20
+            git log --oneline "$before"..HEAD | head -20
+            # push with the PAT, not GITHUB_TOKEN: a merge often carries upstream's
+            # .github/workflows changes, and the runner's App token may not write those
+            git config --local --unset-all 'http.https://github.com/.extraheader' || true
+            git config --local http.https://github.com/.extraheader "AUTHORIZATION: bearer ${FORK_PAT}"
             git push origin HEAD:main
+            git config --local --unset-all 'http.https://github.com/.extraheader' || true
           fi
+        env:
+          FORK_PAT: ${{ secrets.FORK_PAT }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
