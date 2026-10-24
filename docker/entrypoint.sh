@@ -246,12 +246,6 @@ if [ -n "${EXTRA_ENGINE_ARGS:-}" ]; then
   say "EXTRA_ENGINE_ARGS applied as --set settings (fork patch): $EXTRA_ENGINE_ARGS"
 fi
 
-# ---- fork patch (h2): EXTRA_CONFIG_JSON is retired. 0.2.x writes the run settings itself, and the only key
-# this deployment ever used (fit_max_tokens) is the built-in default here (serve/server.py: default True).
-if [ -n "${EXTRA_CONFIG_JSON:-}" ]; then
-  die "EXTRA_CONFIG_JSON is not used by this image (0.2.x writes the run settings itself). fit_max_tokens is on by default here; if you need other engine settings, use EXTRA_ENGINE_ARGS or STRATA_SET (docs at the top). Remove the EXTRA_CONFIG_JSON line from compose." 2
-fi
-
 # tune once: ask only when this preset has not been tuned yet (a restart must not tune again for 20 minutes)
 tune_mode=$(printf '%s' "${TUNE:-}" | tr 'A-Z' 'a-z')
 if [ -n "$tune_mode" ] && [ "$tune_mode" != "skip" ]; then

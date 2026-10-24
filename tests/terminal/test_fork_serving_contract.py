@@ -5,7 +5,8 @@ that silently drops or overwrites a fork patch turns this file red:
 
 - docker/entrypoint.sh h2 (9be2af85, 99fbffe0): serve keyless (--no-api-key) unless
   API_KEY/API_KEY_FILE gives a key, and no false "made one" warning; EXTRA_ENGINE_ARGS
-  rewritten into `--set key=value` settings; EXTRA_CONFIG_JSON retired with guidance.
+  rewritten into `--set key=value` settings. EXTRA_CONFIG_JSON is unmentioned by design:
+  a stale line in compose is simply unused (Simo 2026-10-24: the added hard stop was unnecessary).
 - the /switch active_model override (entrypoint "fork patch" block): a container
   restart comes up on the model the last /switch chose.
 - PARALLEL reaches `launch --parallel` (the compose speed contract: batch slots eat
@@ -192,13 +193,6 @@ class TestEntrypointForkPatches(EntrypointSandbox):
         for want in ("prefill=auto:32768", "conversation-cache-mib=4096", "conversation-cache-slots=2", "spec=4", "kv-flag=on"):
             self.assertIn(want, sets, "EXTRA_ENGINE_ARGS bridge lost or broke one setting")
         self.assertIn("EXTRA_ENGINE_ARGS applied as --set settings (fork patch)", out)
-
-    def test_extra_config_json_is_retired_fork_patch(self):
-        """9be2af85: EXTRA_CONFIG_JSON dies with guidance instead of being silently ignored."""
-        rc, out = self.run_entry(**{"EXTRA_CONFIG_JSON": '{"fit_max_tokens": true}'})
-        self.assertEqual(rc, 2)
-        self.assertIn("EXTRA_CONFIG_JSON is not used", out)
-        self.assertEqual(self.launch_args(), [], "a retired setting must never reach launch")
 
     def test_parallel_env_reaches_launch(self):
         """The compose speed contract: PARALLEL=1 -> `--parallel 1` (batch slots eat the expert-cache VRAM)."""
