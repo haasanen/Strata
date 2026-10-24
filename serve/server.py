@@ -8175,6 +8175,25 @@ def _component_exe(reference: str, cfg: dict) -> str:
         raise SystemExit(e.exit_code) from None
 
 
+def env_reasoning_settings(cfg: dict) -> None:
+    """fork patch (h4): $STRATA_REASONING_BUDGET_TOKENS / $STRATA_REASONING_LOOP_RECOVERY as
+    fallbacks for #123 and #728, in the shape $STRATA_ALLOWED_HOSTS already has: a config that
+    names the key wins, the environment fills the rest, and a garbage budget is a start-up error.
+    A compose-only deployment can therefore cap runaway thinking (issue #617: an abliterated
+    model can stream reasoning forever, burning the whole budget — ~15 minutes at 200+ tok/s)
+    without editing the run-config JSON the launcher owns."""
+    if cfg.get("reasoning_budget_tokens") is None and os.environ.get("STRATA_REASONING_BUDGET_TOKENS"):
+        v = os.environ["STRATA_REASONING_BUDGET_TOKENS"].strip()
+        try:
+            cfg["reasoning_budget_tokens"] = int(v)
+        except ValueError:
+            raise SystemExit(f"[strata] STRATA_REASONING_BUDGET_TOKENS must be a whole number of "
+                             f"tokens (0: no budget), not {v!r}")
+    if "reasoning_loop_recovery" not in cfg and os.environ.get("STRATA_REASONING_LOOP_RECOVERY"):
+        v = os.environ["STRATA_REASONING_LOOP_RECOVERY"].strip().lower()
+        cfg["reasoning_loop_recovery"] = False if v in ("false", "off", "0") else v
+
+
 def main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> int:
     try:                                               # files made by a run as administrator still belong to the user
         from strata_control import private_files as _pf
@@ -8621,6 +8640,7 @@ def main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> in
         raise SystemExit(f"[strata] config \"repeat_stop_tokens\" must be a whole number >= 0 (0 = off), not {rs!r}")
     svc.repeat_stop_tokens = rs
     svc.effort_end = bool(effort_end)                   # #458: "effort_position": "end" with an engine that has it
+    env_reasoning_settings(cfg)                          # fork patch (h4): env fallbacks for #123/#728
     if cfg.get("reasoning_budget_tokens") is not None:  # #123: a default thinking budget for every request
         svc.reasoning_budget_configured = True
         try:
