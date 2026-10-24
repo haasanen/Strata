@@ -1,0 +1,283 @@
+"""The fork's own serving patches must survive every upstream merge.
+
+Each test pins one thing this fork changes on top of upstream Strata, so a merge
+that silently drops or overwrites a fork patch turns this file red:
+
+- docker/entrypoint.sh h2 (9be2af85, 99fbffe0): serve keyless (--no-api-key) unless
+  API_KEY/API_KEY_FILE gives a key, and no false "made one" warning; EXTRA_ENGINE_ARGS
+  rewritten into `--set key=value` settings; EXTRA_CONFIG_JSON retired with guidance.
+- the /switch active_model override (entrypoint "fork patch" block): a container
+  restart comes up on the model the last /switch chose.
+- PARALLEL reaches `launch --parallel` (the compose speed contract: batch slots eat
+  the expert-cache VRAM on the 4090, PARALLEL=1 is mandatory).
+- serve/lifeline.py (ed33acfc): the portable watcher's token is the start time only.
+- setup.py (1238dae9): every abliterated-family file is pinned in REPO_PINS.
+- Dockerfiles + docker.yml: STRATA_COMMIT pass-through and the FORK_PAT basic-auth
+  sync form (ce010c08, dcba1599, 5a5a49db, dbc48dff).
+- serve/server.py: $STRATA_ALLOWED_HOSTS stays the keyless-LAN contract the compose relies on.
+
+Functional entrypoint tests rewrite the hardcoded absolute roots into a sandbox and
+run the script against a stub `strata` that records its argv.
+"""
+from __future__ import annotations
+
+import ast
+import importlib.util
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+ENTRYPOINT = ROOT / "docker" / "entrypoint.sh"
+SH = shutil.which("sh")
+
+
+def sh_path(p) -> str:
+    cyg = shutil.which("cygpath")
+    return str(p) if cyg is None else subprocess.run([cyg, "-u", str(p)], capture_output=True, text=True, check=True).stdout.strip()
+
+
+STUB = """#!/bin/sh
+printf '%s\\n' "ARGS: $*" >> "$STUB_LOG"
+case "$1 $2" in
+  "components engine")
+    if [ "$3" = "--output" ]; then printf '{"usable": true, "backend": "cpu"}\\n'; fi ;;
+  "launch --list-presets")
+    printf '[]\\n' ;;
+  "launch --status")
+    printf '{"state": "ready"}\\n' ;;
+  "launch --show-key") ;;
+  "launch --stop") ;;
+esac
+if [ "$1 $2" = "launch --no-tui" ]; then printf '%s\\n' "KEY:${STRATA_LAUNCH_KEY:-none}" >> "$STUB_LOG"; fi
+exit 0
+"""
+
+
+class EntrypointSandbox(unittest.TestCase):
+    """Runs docker/entrypoint.sh with its /opt/strata, /data and /run roots rewritten into a temp dir."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.log = self.tmp / "stub.log"
+        app = self.tmp / "opt" / "strata"
+        (app / "terminal" / "bin").mkdir(parents=True)
+        for d in ("data/install", "data/state", "run"):
+            (self.tmp / d).mkdir(parents=True, exist_ok=True)
+        stub = app / "terminal" / "bin" / "strata"
+        stub.write_text(STUB, encoding="utf-8")
+        stub.chmod(0o755)
+        text = ENTRYPOINT.read_text(encoding="utf-8")
+        app = self.tmp / "opt" / "strata"
+        td = str(self.tmp / "data")
+        for old, new in (
+            ("APP=/opt/strata", f"APP={app}"),
+            ("PHASE_FILE=/run/strata-phase", f"PHASE_FILE={self.tmp}/run/strata-phase"),
+            ("mkdir -p /data/state /data/home /data/install /data/Strata-data /run",
+             f"mkdir -p {td}/state {td}/home {td}/install {td}/Strata-data {self.tmp}/run"),
+            ('"/data/', f'"{td}/'),          # every quoted absolute path
+            ('" /data/', f'" {td}/'),         # the mountinfo patterns inside quotes
+            ("in /data/install/", f"in {td}/install/"),
+            ("--data-dir /data/Strata-data", f"--data-dir {td}/Strata-data"),
+        ):
+            text = text.replace(old, new)
+        self.script = self.tmp / "entrypoint.sh"
+        self.script.write_text(text, encoding="utf-8")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def run_entry(self, **env):
+        e = {k: v for k, v in os.environ.items() if not k.startswith(("MODEL", "FAMILY", "VISION", "API_KEY", "EXTRA_", "PARALLEL", "TUNE", "STRATA_", "ACTIVE_", "XDG_", "GGUF", "KV", "GPU", "PORT", "PRESET"))}
+        pydir = os.path.dirname(sys.executable)
+        e.update({"STUB_LOG": str(self.log), "PATH": f"/usr/bin:/bin:{pydir}", "PRESET": "docker", "PORT": "8000",
+                  "XDG_STATE_HOME": str(self.tmp / "data" / "state"),
+                  "STRATA_KEY_FILE": str(self.tmp / "api-key"),
+                  "STRATA_INSTALL_DIR": str(self.tmp / "data" / "install")})
+        e.update({k: str(v) for k, v in env.items()})
+        p = subprocess.Popen([SH, sh_path(self.script)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             stdin=subprocess.DEVNULL, env=e, text=True)
+        # the sandboxed entry point stays up in its watch loop once "serving": stop it after that
+        out_lines = []
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            if p.poll() is not None:
+                break
+            line = p.stdout.readline()
+            if not line:
+                break
+            out_lines.append(line)
+            if "Serving on port" in line:
+                p.terminate()
+                time.sleep(0.3)
+                if p.poll() is None:
+                    p.kill()
+                break
+        try:
+            rest = p.communicate(timeout=5)
+            out_lines.append(rest[0] or "")
+            rc = p.returncode
+        except subprocess.TimeoutExpired:
+            p.kill()
+            rc = p.returncode
+        return rc, "".join(out_lines)
+
+    def launch_args(self):
+        if not self.log.exists():
+            return []
+        for line in self.log.read_text(encoding="utf-8").splitlines():
+            if line.startswith("ARGS: launch --no-tui"):
+                return shlex.split(line[len("ARGS: "):])
+        return []
+
+    def stub_key(self):
+        if not self.log.exists():
+            return None
+        for line in self.log.read_text(encoding="utf-8").splitlines():
+            if line.startswith("KEY:"):
+                return line[len("KEY:"):]
+        return None
+
+
+@unittest.skipIf(SH is None, "needs a POSIX sh")
+class TestEntrypointForkPatches(EntrypointSandbox):
+
+    def test_serves_keyless_by_default_fork_patch(self):
+        """9be2af85: no API_KEY in the environment -> --no-api-key, and the launch stays lan-accessible."""
+        self.run_entry()
+        args = self.launch_args()
+        self.assertTrue(args, "the sandboxed entry point never reached `strata launch`")
+        self.assertIn("--no-api-key", args, "fork patch lost: the 0.2.x default invents an API key again")
+        self.assertNotIn("--api-key-env", args)
+        self.assertIn("--access", args)
+        self.assertEqual(args[args.index("--access") + 1], "lan")
+
+    def test_no_false_made_one_warning_fork_patch(self):
+        """99fbffe0: with --no-api-key no key is made, so the old warning must stay out."""
+        rc, out = self.run_entry()
+        self.assertNotIn("Strata made one", out)
+        self.assertNotIn("made one", out)
+
+    def test_api_key_env_bridge(self):
+        """A set API_KEY still works: it travels as --api-key-env STRATA_LAUNCH_KEY, value in the launch env."""
+        self.run_entry(API_KEY="0123456789abcdef")
+        args = self.launch_args()
+        self.assertIn("--api-key-env", args)
+        self.assertEqual(args[args.index("--api-key-env") + 1], "STRATA_LAUNCH_KEY")
+        self.assertNotIn("--no-api-key", args)
+        self.assertEqual(self.stub_key(), "0123456789abcdef")
+
+    def test_extra_engine_args_become_set_settings_fork_patch(self):
+        """9be2af85: the old compose EXTRA_ENGINE_ARGS string -> `--set key=value`, bare flags become =on."""
+        rc, out = self.run_entry(**{"EXTRA_ENGINE_ARGS": "--prefill auto:32768 --conversation-cache-mib 4096 --conversation-cache-slots 2 --spec 4 --kv-flag"})
+        args = self.launch_args()
+        sets = set()
+        i = 0
+        while i < len(args):
+            if args[i] == "--set":
+                sets.add(args[i + 1])
+                i += 2
+            else:
+                i += 1
+        for want in ("prefill=auto:32768", "conversation-cache-mib=4096", "conversation-cache-slots=2", "spec=4", "kv-flag=on"):
+            self.assertIn(want, sets, "EXTRA_ENGINE_ARGS bridge lost or broke one setting")
+        self.assertIn("EXTRA_ENGINE_ARGS applied as --set settings (fork patch)", out)
+
+    def test_extra_config_json_is_retired_fork_patch(self):
+        """9be2af85: EXTRA_CONFIG_JSON dies with guidance instead of being silently ignored."""
+        rc, out = self.run_entry(**{"EXTRA_CONFIG_JSON": '{"fit_max_tokens": true}'})
+        self.assertEqual(rc, 2)
+        self.assertIn("EXTRA_CONFIG_JSON is not used", out)
+        self.assertEqual(self.launch_args(), [], "a retired setting must never reach launch")
+
+    def test_parallel_env_reaches_launch(self):
+        """The compose speed contract: PARALLEL=1 -> `--parallel 1` (batch slots eat the expert-cache VRAM)."""
+        self.run_entry(PARALLEL=1, MODEL="IQ3_S", FAMILY="abliterated")
+        args = self.launch_args()
+        self.assertIn("--parallel", args, "PARALLEL no longer reaches launch: the auto-fit can silently steal the expert cache again")
+        self.assertEqual(args[args.index("--parallel") + 1], "1")
+        self.assertEqual(args[args.index("--model") + 1], "IQ3_S")
+        self.assertEqual(args[args.index("--family") + 1], "abliterated")
+
+    def test_vision_cpu_honored_and_bogus_refused(self):
+        self.run_entry(VISION="cpu")
+        args = self.launch_args()
+        self.assertEqual(args[args.index("--vision") + 1], "cpu")
+        rc, out = self.run_entry(VISION="banana")
+        self.assertEqual(rc, 2)
+        self.assertIn("VISION=banana", out)
+
+    def test_active_model_file_overrides_env_fork_patch(self):
+        """The /switch fork patch: the file the server's /switch wrote decides the model at restart."""
+        (self.tmp / "data" / "install" / "active_model").write_text("abliterated IQ3_S\n", encoding="utf-8")
+        rc, out = self.run_entry(MODEL="Q2_0", FAMILY="qwen")
+        self.assertIn("active_model: abliterated/IQ3_S overrides", out)
+        args = self.launch_args()
+        self.assertEqual(args[args.index("--model") + 1], "IQ3_S")
+        self.assertEqual(args[args.index("--family") + 1], "abliterated")
+
+
+class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
+
+    def test_abliterated_family_fully_pinned_in_setup(self):
+        """1238dae9: upstream's REPO_PINS table needs every downloaded file pinned; the abliterated line must survive merges."""
+        tree = ast.parse((ROOT / "setup.py").read_text(encoding="utf-8"))
+        pinned = [s.value for s in ast.walk(tree) if isinstance(s, ast.Constant) and isinstance(s.value, str)]
+        shards = [p for p in pinned if "abliterated" in p and p.endswith(".gguf")]
+        self.assertGreaterEqual(len(shards), 8, "the abliterated family's shard pins are missing from setup.py")
+        repos = [p for p in pinned if p.startswith("SC117/") and "abliterated" in p]
+        self.assertTrue(repos, "the abliterated repo pin is gone")
+
+    def test_lifeline_token_is_start_time_only(self):
+        """ed33acfc: STAT is mutable mid-life; the watcher's token must be lstart only (plus a separate zombie peek)."""
+        path = ROOT / "serve" / "lifeline.py"
+        src = path.read_text(encoding="utf-8")
+        self.assertNotIn("lstart=,stat=", src, "the lifeline token regressed to the mutable lstart+stat form")
+        spec = importlib.util.spec_from_file_location("lifeline_under_test", path)
+        mod = importlib.util.module_from_spec(spec)
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))          # lifeline does `from serve import winjob`
+        try:
+            spec.loader.exec_module(mod)
+        except SystemExit:
+            self.skipTest("module wants a TTY at import")
+        if sys.platform == "win32":
+            self.skipTest("ps-based token on POSIX only")
+        token = mod._start_token(os.getpid())
+        ps = subprocess.run(["ps", "-o", "lstart=", "-p", str(os.getpid())], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(token, "s:" + ps, "the token is not exactly the process start time")
+
+    def test_allowed_hosts_env_stays_the_keyless_contract(self):
+        """STRATA_ALLOWED_HOSTS is why the keyless compose block works on the LAN; the name is a deployment contract."""
+        src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
+        self.assertIn("STRATA_ALLOWED_HOSTS", src, "the env name the compose relies on changed")
+
+    def test_dockerfiles_pass_the_source_commit(self):
+        """ce010c08/dbc48dff/ae01fa14: the terminal stage has no .git; STRATA_COMMIT must flow in."""
+        for f in (ROOT / "Dockerfile", ROOT / "docker" / "Dockerfile"):
+            if not f.exists():
+                continue
+            text = f.read_text(encoding="utf-8")
+            if "terminal" not in text.lower():
+                continue
+            self.assertIn("ARG STRATA_COMMIT", text, f"{f.name}: the commit pass-through was lost in a merge")
+            self.assertIn("${STRATA_COMMIT}", text, f"{f.name}: STRATA_COMMIT declared but never used")
+
+    def test_docker_workflow_syncs_with_fork_pat_basic_form(self):
+        """5a5a49db/dcba1599: the sync push uses FORK_PAT in basic x-access-token form; the build gets github.sha."""
+        text = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+        self.assertIn("FORK_PAT", text, "the sync step lost FORK_PAT (GITHUB_TOKEN cannot write workflow files)")
+        self.assertIn("x-access-token:", text, "the sync lost the proven basic-auth form")
+        self.assertIn("STRATA_COMMIT=${{ github.sha }}", text,
+                      "the build no longer receives the source commit")
+
+
+if __name__ == "__main__":
+    unittest.main()
