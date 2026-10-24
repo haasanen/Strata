@@ -15,6 +15,9 @@ that silently drops or overwrites a fork patch turns this file red:
 - Dockerfiles + docker.yml: STRATA_COMMIT pass-through and the FORK_PAT basic-auth
   sync form (ce010c08, dcba1599, 5a5a49db, dbc48dff).
 - serve/server.py: $STRATA_ALLOWED_HOSTS stays the keyless-LAN contract the compose relies on.
+- serve/server.py /switch 0.2.x (ed753ecd+): the switch sees the 0.2.x layout - run settings
+  in any candidate dir, model folders under <data>/Strata-data/models, and active_model
+  written where the entrypoint reads it first ($STRATA_INSTALL_DIR).
 
 Functional entrypoint tests rewrite the hardcoded absolute roots into a sandbox and
 run the script against a stub `strata` that records its argv.
@@ -290,6 +293,54 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
         self.assertIn('elif path == "/switch":', src, "GET /switch (the model list) vanished")
         self.assertIn("the switchable models", src, "GET /switch lost its list semantics")
+
+    def test_switch_installed_unions_configs_and_model_folders(self):
+        """0.2.x layout: GET /switch must list run settings from any candidate dir AND model
+        folders that hold ggufs under <data>/Strata-data/models - the pre-0.2.x helper saw only
+        one config dir, which is why a stock model already on disk answered 'installed: none'."""
+        tree = ast.parse((ROOT / "serve" / "server.py").read_text(encoding="utf-8"))
+        funcs = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in ("_switch_dirs", "_switch_config_dir", "_switch_installed"):
+                node.decorator_list = []
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "<switch>", "exec"), {"Path": Path, "os": os}, funcs)
+
+        class Svc:
+            config_path = None
+
+        class Self:
+            _switch_dirs = funcs["_switch_dirs"]
+            _switch_config_dir = funcs["_switch_config_dir"]
+            _switch_installed = funcs["_switch_installed"]
+
+        with tempfile.TemporaryDirectory() as td:
+            data = Path(td)
+            (data / "config").mkdir()
+            (data / "config" / "strata-abliterated-iq3_s.json").write_text("{}", encoding="utf-8")
+            folder = data / "Strata-data" / "models" / "qwen-IQ3_S"
+            folder.mkdir(parents=True)
+            (folder / "model.gguf").write_text("g", encoding="utf-8")
+            (folder / "note.txt").write_text("x", encoding="utf-8")
+            (data / "install").mkdir()
+            os.environ["STRATA_DATA"], os.environ["STRATA_INSTALL_DIR"] = str(data), str(data / "install")
+            try:
+                names = Self()._switch_installed(Svc())
+                wdir = Self()._switch_config_dir(Svc())
+            finally:
+                os.environ.pop("STRATA_DATA"), os.environ.pop("STRATA_INSTALL_DIR")
+        self.assertIn("abliterated-iq3_s", names, "run settings from the old config dir stopped being listed")
+        self.assertIn("qwen-IQ3_S", names, "model folders with ggufs stopped being listed")
+        self.assertNotIn("note.txt", names, "non-model folders leak into the switch list")
+        self.assertEqual(wdir, data / "install", "active_model must land where the entrypoint reads it first")
+
+    def test_switch_post_accepts_a_model_folder_without_a_run_setting(self):
+        """POST /switch: a folder under Strata-data/models is switchable as it stands (launch
+        re-makes its setting from the files; nothing downloads) - not only models that already
+        have a strata-*.json."""
+        src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('for rel in ("Strata-data" / "models", Path("models")):', src,
+                      "POST /switch stopped accepting 0.2.x model folders")
+        self.assertIn('p.name.lower() in folder_names', src, "POST /switch folder match vanished")
 
     def test_switch_config_dir_goes_through_the_helper(self):
         """798255b8: /switch resolves the config dir through one helper (run-config symlink safe)."""

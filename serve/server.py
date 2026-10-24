@@ -6710,14 +6710,16 @@ def make_handler(svc: Service):
                     self._json(200, svc.v1_status())
             elif path == "/switch":                          # fork patch: the switchable models (see do_POST)
                 if self._authorized():
-                    cdir = self._switch_config_dir(svc)
-                    installed = sorted(p.name[len("strata-"):-len(".json")] for p in cdir.glob("strata-*.json")) if cdir.is_dir() else []
+                    installed = self._switch_installed(svc)
                     active = ""
-                    try:
-                        active = (cdir / "active_model").read_text().split()
+                    for cand in self._switch_dirs(svc):          # the entrypoint's read order
+                        try:
+                            active = (cand / "active_model").read_text().split()
+                            break
+                        except OSError:
+                            continue
+                    if active:
                         active = f"{active[0]}/{active[1]}" if len(active) == 2 else ""
-                    except OSError:
-                        pass                                 # no active_model: the compose env's model is active
                     self._json(200, {"object": "list", "data": installed, "running": svc.model,
                                      "active_model": active or "(compose env)"})
             else:
@@ -6782,13 +6784,26 @@ def make_handler(svc: Service):
                 if not mod:                                  # bare name: the qwen family (empty tag prefix)
                     fam, mod = "qwen", target
                 prefix = "" if fam == "qwen" else fam + "-"
-                cdir = self._switch_config_dir(svc)
-                want = cdir / f"strata-{prefix}{mod.lower()}.json"
-                if not want.is_file():
-                    installed = sorted(p.name[len("strata-"):-len(".json")]
-                                       for p in cdir.glob("strata-*.json")) if cdir.is_dir() else []
+                installed = self._switch_installed(svc)
+                data = Path(os.environ.get("STRATA_DATA", "/data"))
+                have = any((d / f"strata-{prefix}{mod.lower()}.json").is_file() for d in self._switch_dirs(svc))
+                if not have:                                   # 0.2.x: a model folder is switchable as it stands
+                    folder_names = {f"{prefix}{mod}".lower(), mod.lower()}
+                    for rel in ("Strata-data" / "models", Path("models")):
+                        mdir = data / rel
+                        if not mdir.is_dir():
+                            continue
+                        for p in mdir.iterdir():
+                            if p.is_dir() and p.name.lower() in folder_names and any(
+                                    f.suffix == ".gguf" for f in p.glob("*.gguf")):
+                                have = True
+                                break
+                        if have:
+                            break
+                if not have:
                     self._json(404, {"error": {"message": f"no installed model {target}; installed: {', '.join(installed) or 'none'}"}})
                     return
+                cdir = self._switch_config_dir(svc)
                 cdir.mkdir(parents=True, exist_ok=True)
                 (cdir / "active_model").write_text(f"{fam} {mod}\n")
                 self._json(200, {"status": "switching", "to": f"{fam}/{mod}",
@@ -7055,13 +7070,47 @@ def make_handler(svc: Service):
                 return False
             return True
 
+        def _switch_dirs(self, svc):
+            """Fork patch (/switch, 0.2.x): every directory that can hold run settings or the
+            active_model file, in the order the image's entrypoint reads them. The 0.2.x image
+            keeps run settings beside the install ($STRATA_INSTALL_DIR, default /data/install);
+            0.1.x images and manual installs kept them in the data volume's config dir; an
+            explicit run config (config_path) names the dir this process actually uses."""
+            out, seen = [], set()
+            cands = ([Path(svc.config_path).resolve().parent] if svc.config_path else []) + [
+                Path(os.environ.get("STRATA_INSTALL_DIR", "/data/install")),
+                Path(os.environ.get("STRATA_DATA", "/data")) / "config"]
+            for d in cands:
+                if str(d) not in seen:
+                    seen.add(str(d))
+                    out.append(d)
+            return out
+
         def _switch_config_dir(self, svc):
-            """Fork patch (/switch): the directory holding the strata-*.json configs.
-            The run config is a symlink into the data volume (/opt/strata/strata-<tag>.json
-            -> /data/config/...), so resolve it and take its parent."""
-            if svc.config_path:
-                return Path(svc.config_path).resolve().parent
-            return Path(os.environ.get("STRATA_DATA", "/data")) / "config"
+            """Fork patch (/switch): where this switch writes active_model: the first existing
+            candidate dir - the entrypoint reads $STRATA_INSTALL_DIR first, so writing there
+            beats a stale dir that only holds old-image leftovers."""
+            for d in self._switch_dirs(svc):
+                if d.is_dir():
+                    return d
+            return self._switch_dirs(svc)[0]
+
+        def _switch_installed(self, svc):
+            """Fork patch (/switch, 0.2.x): switchable models = run settings found in any
+            candidate dir PLUS model folders in the engine's data dir: 0.2.x keeps what the
+            person already has under <data>/Strata-data/models/, and a folder there is
+            switchable even before a run setting exists (launch re-makes the setting from the
+            files; nothing downloads, see the entrypoint's MODEL_PATH contract)."""
+            names = set()
+            for d in self._switch_dirs(svc):
+                if d.is_dir():
+                    names.update(p.name[len("strata-"):-len(".json")] for p in d.glob("strata-*.json"))
+            data = Path(os.environ.get("STRATA_DATA", "/data"))
+            for models in (data / "Strata-data" / "models", data / "models"):   # 0.2.x and pre-0.2.x
+                if models.is_dir():
+                    names.update(p.name for p in models.iterdir() if p.is_dir() and any(
+                        f.suffix == ".gguf" for f in p.glob("*.gguf")))
+            return sorted(names)
 
         def _config_get(self):
             if not svc.config_path:
