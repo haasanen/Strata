@@ -7072,14 +7072,14 @@ def make_handler(svc: Service):
 
         def _switch_dirs(self, svc):
             """Fork patch (/switch, 0.2.x): every directory that can hold run settings or the
-            active_model file, in the order the image's entrypoint reads them. The 0.2.x image
-            keeps run settings beside the install ($STRATA_INSTALL_DIR, default /data/install);
-            0.1.x images and manual installs kept them in the data volume's config dir; an
-            explicit run config (config_path) names the dir this process actually uses."""
+            active_model file, in the order the image's entrypoint reads them: install dir
+            ($STRATA_INSTALL_DIR, default /data/install), then <data>/config, then the run
+            config's own dir. The entrypoint only looks at the first two, so an active_model
+            written into the third is recorded but never applied (found live 2026-10-24)."""
             out, seen = [], set()
-            cands = ([Path(svc.config_path).resolve().parent] if svc.config_path else []) + [
-                Path(os.environ.get("STRATA_INSTALL_DIR", "/data/install")),
-                Path(os.environ.get("STRATA_DATA", "/data")) / "config"]
+            cands = [Path(os.environ.get("STRATA_INSTALL_DIR", "/data/install")),     # the entrypoint's read order:
+                     Path(os.environ.get("STRATA_DATA", "/data")) / "config",         # install dir first, then the
+                     *([Path(svc.config_path).resolve().parent] if svc.config_path else [])]  # volume's config dir; the
             for d in cands:
                 if str(d) not in seen:
                     seen.add(str(d))
@@ -7087,13 +7087,15 @@ def make_handler(svc: Service):
             return out
 
         def _switch_config_dir(self, svc):
-            """Fork patch (/switch): where this switch writes active_model: the first existing
-            candidate dir - the entrypoint reads $STRATA_INSTALL_DIR first, so writing there
-            beats a stale dir that only holds old-image leftovers."""
-            for d in self._switch_dirs(svc):
-                if d.is_dir():
-                    return d
-            return self._switch_dirs(svc)[0]
+            """Fork patch (/switch): where this switch writes active_model: the install dir,
+            which the entrypoint reads FIRST - always, even when a run-config dir exists and
+            is switchable for listings: the entrypoint never reads that third dir, so a choice
+            written there restarts onto the compose model instead of the chosen one."""
+            install = Path(os.environ.get("STRATA_INSTALL_DIR", "/data/install"))
+            if install.is_dir():
+                return install
+            cfg = Path(os.environ.get("STRATA_DATA", "/data")) / "config"
+            return cfg if cfg.is_dir() else install
 
         def _switch_installed(self, svc):
             """Fork patch (/switch, 0.2.x): switchable models = run settings found in any

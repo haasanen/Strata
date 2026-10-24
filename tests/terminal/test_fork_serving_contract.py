@@ -327,6 +327,40 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         self.assertNotIn("note.txt", names, "non-model folders leak into the switch list")
         self.assertEqual(wdir, data / "install", "active_model must land where the entrypoint reads it first")
 
+    def test_switch_writes_to_the_install_dir_even_with_a_run_config(self):
+        """A live-found trap: the run config's dir is a fine place to LIST settings from but the
+        entrypoint never reads active_model from it - a switch written there is reported by GET
+        yet the restart comes up on the compose model. Writing must follow the entrypoint."""
+        tree = ast.parse((ROOT / "serve" / "server.py").read_text(encoding="utf-8"))
+        funcs = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in ("_switch_dirs", "_switch_config_dir"):
+                node.decorator_list = []
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "<switch>", "exec"), {"Path": Path, "os": os}, funcs)
+
+        class Self:
+            _switch_dirs = funcs["_switch_dirs"]
+            _switch_config_dir = funcs["_switch_config_dir"]
+
+        with tempfile.TemporaryDirectory() as td:
+            data, install = Path(td) / "data", Path(td) / "install"
+            cfg = data / "Strata-data" / "config"
+            cfg.mkdir(parents=True)
+            install.mkdir()
+            (cfg / "strata-iq3_s.json").write_text("{}", encoding="utf-8")
+
+            class Svc:  # the real serving state: a run config exists inside the data volume
+                config_path = str(cfg / "strata-iq3_s.json")
+
+            os.environ["STRATA_DATA"], os.environ["STRATA_INSTALL_DIR"] = str(data), str(install)
+            try:
+                wdir = Self()._switch_config_dir(Svc())
+                order = Self()._switch_dirs(Svc())
+            finally:
+                os.environ.pop("STRATA_DATA"), os.environ.pop("STRATA_INSTALL_DIR")
+        self.assertEqual(wdir, install, "active_model written where the entrypoint never looks")
+        self.assertEqual(order[:2], [install, data / "config"], "active_model read order must match the entrypoint")
+
     def test_switch_post_accepts_a_model_folder_without_a_run_setting(self):
         """POST /switch: a folder under Strata-data/models is switchable as it stands (launch
         re-makes its setting from the files; nothing downloads) - not only models that already
