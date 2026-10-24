@@ -279,5 +279,49 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
                       "the build no longer receives the source commit")
 
 
+    def test_switch_post_exits_when_idle_not_mid_request(self):
+        """5ce26904: /switch must wait for the request FIFO; exiting mid-request killed the caller's own generation."""
+        src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
+        self.assertIn("def _exit_when_idle(", src, "/switch exits mid-request again")
+        self.assertIn("svc.fifo.acquire", src, "the idle wait no longer takes the request FIFO")
+
+    def test_switch_get_lists_installed_models(self):
+        """19d886ad: GET /switch answers with the switchable models (the tooling reads it)."""
+        src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('elif path == "/switch":', src, "GET /switch (the model list) vanished")
+        self.assertIn("the switchable models", src, "GET /switch lost its list semantics")
+
+    def test_switch_config_dir_goes_through_the_helper(self):
+        """798255b8: /switch resolves the config dir through one helper (run-config symlink safe)."""
+        src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
+        self.assertIn("def _switch_config_dir(", src, "the /switch paths stopped resolving through the helper")
+
+    def test_restart_picks_one_deterministic_model_config(self):
+        """88e31e96: an ambiguous config set once looped setup on 'Which one?' at EOF;
+        today the choice is deterministic: active_model pins MODEL/FAMILY explicitly."""
+        text = ENTRYPOINT.read_text(encoding="utf-8")
+        self.assertIn('MODEL="$amod"; FAMILY="$afam"', text,
+                      "the restart no longer pins one model config explicitly")
+        self.assertIn("fork patch (/switch)", text, "the active_model override block vanished")
+
+    def test_ci_merges_released_upstream_and_tags_from_releases(self):
+        """c952ae1b + 728c12f9: only upstream RELEASES get merged; <upstream>-h<N> numbers come from releases/latest."""
+        text = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+        self.assertIn("releases/latest", text, "the release-only sync/tag version source was lost")
+        self.assertIn("could not read upstream release version", text, "the tag version read lost its guard")
+
+    def test_ci_builds_are_serialized(self):
+        """dbcd7dff: two concurrent builds raced and reused the same -h<N> tag."""
+        text = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+        self.assertIn("group: strata-build-push", text, "builds are no longer serialized (tag races return)")
+
+    def test_vision_allowed_for_ud_q4_pack(self):
+        """b28bab56 (#967): images must stay allowed with the UD-Q4_K_XL pack."""
+        s = (ROOT / "setup.py").read_text(encoding="utf-8")
+        i = s.find('"UD-Q4_K_XL": {')
+        self.assertGreater(i, -1, "the UD-Q4_K_XL pack entry vanished from setup.py")
+        self.assertIn('"vision": True', s[i:i + 1500], "the #967 vision allowance regressed")
+
+
 if __name__ == "__main__":
     unittest.main()

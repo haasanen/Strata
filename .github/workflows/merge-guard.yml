@@ -1,0 +1,21 @@
+name: Merge guard (fork serving contract)
+# A new file on purpose: .github/workflows/ files owned by upstream re-appear on
+# every merge; this one is fork-only and cannot conflict. It runs the contract
+# tests that pin every fork serving patch, so an upstream merge that drops one
+# turns CI red on the merge push itself, not on the NAS the next morning.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the fork serving contract
+        run: cd tests/terminal && python3 -m unittest -v test_fork_serving_contract
