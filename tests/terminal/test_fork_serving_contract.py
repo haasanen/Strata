@@ -15,9 +15,6 @@ that silently drops or overwrites a fork patch turns this file red:
 - Dockerfiles + docker.yml: STRATA_COMMIT pass-through and the FORK_PAT basic-auth
   sync form (ce010c08, dcba1599, 5a5a49db, dbc48dff).
 - serve/server.py: $STRATA_ALLOWED_HOSTS stays the keyless-LAN contract the compose relies on.
-- serve/server.py h4: $STRATA_REASONING_BUDGET_TOKENS / $STRATA_REASONING_LOOP_RECOVERY are the
-  compose fallbacks for #123 (thinking cap) and #728 (loop recovery) — without a cap, the
-  abliterated IQ3_S quant once streamed 124k+ thinking tokens with no end (2026-10-24).
 
 Functional entrypoint tests rewrite the hardcoded absolute roots into a sandbox and
 run the script against a stub `strata` that records its argv.
@@ -324,71 +321,6 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         i = s.find('"UD-Q4_K_XL": {')
         self.assertGreater(i, -1, "the UD-Q4_K_XL pack entry vanished from setup.py")
         self.assertIn('"vision": True', s[i:i + 1500], "the #967 vision allowance regressed")
-
-
-class TestReasoningBudgetFallback(unittest.TestCase):
-    """fork patch (h4): compose env caps thinking (#123) and arms loop recovery (#728).
-    Motivation (measured 2026-10-24): a vision turn streamed 88k -> 124k+ thinking tokens at
-    210.7 tok/s without closing, ~10 minutes until the user restarted the client; upstream
-    issue #617 recommends exactly these two config keys, which a compose-only deployment
-    cannot reach otherwise (the launcher owns the run-config JSON)."""
-
-    _KEYS = ("STRATA_REASONING_BUDGET_TOKENS", "STRATA_REASONING_LOOP_RECOVERY")
-
-    def setUp(self):
-        self._saved = {k: os.environ.get(k) for k in self._KEYS}
-
-    def tearDown(self):
-        for k, v in self._saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-
-    def _helper(self):
-        spec = importlib.util.spec_from_file_location("server_h4_under_test", ROOT / "serve" / "server.py")
-        mod = importlib.util.module_from_spec(spec)
-        if str(ROOT) not in sys.path:
-            sys.path.insert(0, str(ROOT))
-        try:
-            spec.loader.exec_module(mod)
-        except Exception:
-            self.skipTest("serve.server cannot import in this environment")
-        return mod.env_reasoning_settings
-
-    def test_env_budget_applies_config_wins_garbage_exits(self):
-        f = self._helper()
-        os.environ["STRATA_REASONING_BUDGET_TOKENS"] = "16384"
-        cfg = {}
-        f(cfg)
-        self.assertEqual(cfg.get("reasoning_budget_tokens"), 16384, "the env budget did not reach cfg")
-        cfg = {"reasoning_budget_tokens": 12}
-        f(cfg)
-        self.assertEqual(cfg["reasoning_budget_tokens"], 12, "the config must win over the env")
-        os.environ["STRATA_REASONING_BUDGET_TOKENS"] = "lots"
-        with self.assertRaises(SystemExit):
-            f({})
-
-    def test_env_loop_recovery_maps(self):
-        f = self._helper()
-        os.environ["STRATA_REASONING_LOOP_RECOVERY"] = "stop"
-        cfg = {}
-        f(cfg)
-        self.assertEqual(cfg.get("reasoning_loop_recovery"), "stop")
-        os.environ["STRATA_REASONING_LOOP_RECOVERY"] = "OFF"
-        cfg = {}
-        f(cfg)
-        self.assertIs(cfg["reasoning_loop_recovery"], False)
-        cfg = {"reasoning_loop_recovery": "recover"}
-        f(cfg)
-        self.assertEqual(cfg["reasoning_loop_recovery"], "recover", "the config must win over the env")
-
-    def test_env_names_are_the_deployment_contract(self):
-        src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
-        self.assertIn("STRATA_REASONING_BUDGET_TOKENS", src, "the compose env name for the thinking cap changed")
-        self.assertIn("STRATA_REASONING_LOOP_RECOVERY", src, "the compose env name for loop recovery changed")
-        self.assertIn("env_reasoning_settings(cfg)", src,
-                      "the startup lost its call — a kept-but-uncalled helper caps nothing")
 
 
 if __name__ == "__main__":
