@@ -320,10 +320,8 @@ fi
 # keep the key where `docker exec ... strata monitor` and the health check can read it (private file on the volume)
 ( umask 077; "$STRATA" launch --show-key --preset "$PRESET" > "$KEY_FILE" 2>/dev/null ) || true
 [ -s "$KEY_FILE" ] || rm -f "$KEY_FILE"
-if [ -z "$key" ]; then
-  warn "No API_KEY was set, so Strata made one (the server listens on all addresses in the container and will not run without a key)."
-  warn "Show it with: docker exec <container> strata launch --show-key --preset $PRESET   Set your own with -e API_KEY=..."
-fi
+# fork: with no API_KEY we launch --no-api-key (see above) — no key is made, so the old
+# "Strata made one" warning is false here and stays out.
 phase serving
 say "Serving on port $PORT. Watch it: docker exec -it <container> strata monitor    Stop: docker stop <container>"
 
