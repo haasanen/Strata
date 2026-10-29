@@ -249,7 +249,13 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
             self.skipTest("ps-based token on POSIX only")
         token = mod._start_token(os.getpid())
         ps = subprocess.run(["ps", "-o", "lstart=", "-p", str(os.getpid())], capture_output=True, text=True).stdout.strip()
-        self.assertEqual(token, "s:" + ps, "the token is not exactly the process start time")
+        # Either start-time source is the contract: `ps -o lstart=` ("s:", what the fork wrote
+        # until 2026-10-29) or procfs field 22 ("l:", the raw starttime the same ps formats).
+        # What must never come back is STAT - the flake ed33acfc pinned.
+        field22 = open(f"/proc/{os.getpid()}/stat", encoding="utf-8").read()
+        field22 = field22[field22.rindex(")") + 2:].split()[19]
+        self.assertIn(token, ("s:" + ps, "l:" + field22),
+                        "the token is not exactly the process start time")
 
     def test_allowed_hosts_env_stays_the_keyless_contract(self):
         """STRATA_ALLOWED_HOSTS is why the keyless compose block works on the LAN; the name is a deployment contract."""
@@ -366,7 +372,7 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         re-makes its setting from the files; nothing downloads) - not only models that already
         have a strata-*.json."""
         src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
-        self.assertIn('for rel in ("Strata-data" / "models", Path("models")):', src,
+        self.assertIn('for rel in (Path("Strata-data") / "models", Path("models")):', src,
                       "POST /switch stopped accepting 0.2.x model folders")
         self.assertIn('p.name.lower() in folder_names', src, "POST /switch folder match vanished")
 
@@ -400,6 +406,86 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         i = s.find('"UD-Q4_K_XL": {')
         self.assertGreater(i, -1, "the UD-Q4_K_XL pack entry vanished from setup.py")
         self.assertIn('"vision": True', s[i:i + 1500], "the #967 vision allowance regressed")
+
+    @staticmethod
+    def _extract_switch_resolve():
+        tree = ast.parse((ROOT / "serve" / "server.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_switch_resolve":
+                node.decorator_list = []
+                ns: dict = {"Path": Path, "os": os}
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "<switch>", "exec"), ns, ns)
+                return node.name, ns
+        raise AssertionError("_switch_resolve vanished - POST /switch stopped validating targets")
+
+    def test_switch_resolve_validates_targets_before_writing_active_model(self):
+        """2026-10-29 live incident: POST /switch wrote a blind "qwen abliterated-IQ3_S", every
+        later boot died with 'There is no model called abliterated-IQ3_S', and the container
+        restart-looped 12 times before a human reset active_model. The POST must resolve the
+        target through the launcher's own catalog first: valid targets come back canonical, a
+        family tag written as one word resolves to the family that owns it, and unknown names
+        are refused BEFORE the write."""
+        name, ns = self._extract_switch_resolve()
+        resolve = ns[name]
+
+        class FakeCat:
+            def resolve(self, model, family=None):
+                if family is not None and family not in ("qwen", "abliterated"):
+                    raise ValueError(f"There is no model family called '{family}'.")
+                if model.upper() == "IQ3_S" and family in (None, "qwen", "abliterated"):
+                    return (family or "qwen"), "IQ3_S"
+                raise ValueError("There is no model called '" + model + "'. Models: IQ3_S. Families: qwen, abliterated.")
+
+        class Self:
+            _switch_resolve = resolve
+
+            def __init__(self, cat):
+                self._cat = cat
+
+            def _switch_catalog(self):
+                return self._cat
+
+        s = Self(FakeCat())
+        self.assertEqual(s._switch_resolve("qwen", "IQ3_S"), ("qwen", "IQ3_S", ""))
+        self.assertEqual(s._switch_resolve("abliterated", "IQ3_S"), ("abliterated", "IQ3_S", ""))
+        self.assertEqual(s._switch_resolve("qwen", "abliterated-IQ3_S"), ("abliterated", "IQ3_S", ""),
+                         "the one-word family tag the switch list shows must resolve, not crash-loop")
+        fam, mod, err = s._switch_resolve("qwen", "definitely-not-a-model")
+        self.assertIsNone(fam, "an unknown model slipped through the resolver")
+        self.assertIn("definitely-not-a-model", err)
+        self.assertEqual(Self(None)._switch_resolve("anyone", "anything"), ("anyone", "anything", ""),
+                         "no catalog must not block switching")
+
+    def test_switch_post_orders_resolve_before_the_active_model_write(self):
+        src = (ROOT / "serve" / "server.py").read_text(encoding="utf-8")
+        self.assertIn("self._switch_resolve(", src, "POST /switch stopped validating the target")
+        self.assertLess(src.index("self._switch_resolve("), src.index('write_text(f"{fam} {mod}'),
+                        "active_model can be written again before the catalog has vetted the target")
+
+    def test_switch_resolve_agrees_with_the_real_catalog(self):
+        """Against the real setup.py tables: the incident payload must resolve, and a name the
+        boot would reject must be refused with the boot's own message."""
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        try:
+            from strata_cli.launch.catalog import Catalog
+            cat = Catalog()
+        except Exception:
+            self.skipTest("this checkout carries no installer files for the catalog")
+        name, ns = self._extract_switch_resolve()
+
+        class Self:
+            _switch_resolve = ns[name]
+
+            def _switch_catalog(self):
+                return cat
+
+        self.assertEqual(Self()._switch_resolve("qwen", "IQ3_S"), ("qwen", "IQ3_S", ""))
+        self.assertEqual(Self()._switch_resolve("qwen", "abliterated-IQ3_S"), ("abliterated", "IQ3_S", ""),
+                         "the exact 2026-10-29 payload must land on the abliterated family")
+        fam, mod, err = Self()._switch_resolve("qwen", "definitely-not-a-model")
+        self.assertIsNone(fam)
+        self.assertIn("There is no model called", err, "the 404 must carry the boot's own wording")
 
 
 if __name__ == "__main__":
