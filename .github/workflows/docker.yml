@@ -86,6 +86,14 @@ jobs:
         env:
           FORK_PAT: ${{ secrets.FORK_PAT }}
 
+      - name: Fork contract tests (fail-red gate)
+        run: |
+          # 2026-10-29: one wrongly split /switch target ("abliterated-IQ3_S" as one word) went
+          # into active_model blind and crash-looped the running container 12 times on the NAS.
+          # These tests pin the switch contract and the process-identity fixes; an upstream sync
+          # that breaks a fork patch must fail HERE, before the image is pushed, not on the NAS.
+          python3 -m unittest -v tests.terminal.test_fork_serving_contract
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

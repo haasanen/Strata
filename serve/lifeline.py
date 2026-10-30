@@ -152,11 +152,14 @@ _watchers_lock = threading.Lock()
 def _start_token(pid: int) -> str:
     """The same string for the life of one process, different for a later process with that PID.
 
-    Identity is the start time alone. The previous version ran `ps -o lstart=,stat=` and kept the whole
-    line, so the token changed whenever the process changed state - measured here: one child reported
-    '... R' once and '... S' eleven times inside 150 ms. The watcher then compared its own reading with
-    the token from start time, saw "different process", and exited without ending the child, which is
-    exactly the flake `serve/test_lifeline.py` reported as "the child outlived a killed server".
+    Identity is the start time alone. The previous version ran `ps -o 'lstart= stat'` and kept the
+    whole line: it parsed the clock time (`%a %b %e %H:%M:%S %Y`) out of the mixed output and
+    compared it against a time it made itself in ISO form with a `T` - two formats that can never
+    match - and the kept line changed whenever the process changed state, measured here: one child
+    reported '... R' once and '... S' eleven times inside 150 ms. The watcher then compared its own
+    reading with the token from start time, saw "different process", and exited without ending the
+    child, which is exactly the flake `serve/test_lifeline.py` reported as "the child outlived a
+    killed server".
     """
     if sys.platform.startswith("linux"):
         try:

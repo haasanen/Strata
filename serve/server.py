@@ -7282,25 +7282,19 @@ def make_handler(svc: Service):
                 fam, _, mod = target.partition("/")
                 if not mod:                                  # bare name: the qwen family (empty tag prefix)
                     fam, mod = "qwen", target
-                prefix = "" if fam == "qwen" else fam + "-"
                 installed = self._switch_installed(svc)
-                data = Path(os.environ.get("STRATA_DATA", "/data"))
+                fam2, mod2, err = self._switch_resolve(fam, mod)   # fork patch: the launcher's own catalog decides
+                if fam2 is not None:                               # what a family/model is - the same resolver that
+                    fam, mod = fam2, mod2                          # raises the boot's "There is no model called X";
+                prefix = "" if fam == "qwen" else fam + "-"        # a wrong split must never reach active_model
                 have = any((d / f"strata-{prefix}{mod.lower()}.json").is_file() for d in self._switch_dirs(svc))
-                if not have:                                   # 0.2.x: a model folder is switchable as it stands
-                    folder_names = {f"{prefix}{mod}".lower(), mod.lower()}
-                    for rel in ("Strata-data" / "models", Path("models")):
-                        mdir = data / rel
-                        if not mdir.is_dir():
-                            continue
-                        for p in mdir.iterdir():
-                            if p.is_dir() and p.name.lower() in folder_names and any(
-                                    f.suffix == ".gguf" for f in p.glob("*.gguf")):
-                                have = True
-                                break
-                        if have:
-                            break
+                if not have:                                       # 0.2.x: a model folder is switchable as it stands
+                    have = self._switch_model_folder(svc, prefix, mod)
                 if not have:
-                    self._json(404, {"error": {"message": f"no installed model {target}; installed: {', '.join(installed) or 'none'}"}})
+                    if fam2 is None:
+                        self._json(404, {"error": {"message": err, "switchable": installed}})
+                    else:
+                        self._json(404, {"error": {"message": f"no installed model {fam}/{mod}; installed: {', '.join(installed) or 'none'}"}})
                     return
                 cdir = self._switch_config_dir(svc)
                 cdir.mkdir(parents=True, exist_ok=True)
@@ -7568,6 +7562,66 @@ def make_handler(svc: Service):
                                                       f"config's trusted_origins)"}})
                 return False
             return True
+
+        _switch_cat = None            # the catalog once built; False = unavailable (annotation-free: this
+                                    # handler is exec()'d and must resolve every name it touches)
+
+        def _switch_catalog(self):
+            """Fork patch (/switch): the launcher's model catalog (setup.py's tables), built once
+            per process. Returns None when this build carries no installer files - /switch then
+            keeps its pre-catalog behaviour instead of blocking every switch."""
+            cls = type(self)
+            if cls._switch_cat is None:
+                try:
+                    from strata_cli.launch.catalog import Catalog, CatalogUnavailable
+                    try:
+                        cls._switch_cat = Catalog()
+                    except CatalogUnavailable:
+                        cls._switch_cat = False
+                except Exception:                                # noqa: BLE001 - a broken catalog must not block switching
+                    cls._switch_cat = False
+            return cls._switch_cat or None
+
+        def _switch_resolve(self, fam: str, mod: str):
+            """Fork patch (/switch): validate the target through the launcher's OWN resolver - the
+            same code that raises the boot's "There is no model called X". Measured 2026-10-29: one
+            wrongly split target ("qwen" + "abliterated-IQ3_S" written as one word) landed in
+            active_model, every later boot died in setup, and the container restart-looped 12 times
+            before a human reset the file. Returns the canonical (family, model, ""), or
+            (None, None, reason) when the catalog rejects the name. A family-tagged tag spelled as
+            one word - the exact form the switch list itself shows, "abliterated-IQ3_S" - resolves
+            to the family that owns it. Catalog unavailable: pass through unchanged."""
+            cat = self._switch_catalog()
+            if cat is None:
+                return fam, mod, ""
+            try:
+                f2, m2 = cat.resolve(mod, fam or None)
+                return f2, m2, ""
+            except ValueError as first:
+                d = mod.find("-")
+                if d > 0:
+                    try:                                        # "family-MODEL" written as one word: the
+                        f2, m2 = cat.resolve(mod[d + 1:], mod[:d])   # exact form the switch list shows
+                        return f2, m2, ""
+                    except ValueError:
+                        pass                                    # keep the FIRST message: it names what was asked
+                return None, None, str(first)                   # the boot's own wording, the boot's own name
+
+        def _switch_model_folder(self, svc, prefix: str, mod: str) -> bool:
+            """Fork patch (/switch, 0.2.x): a model folder under Strata-data/models holding ggufs
+            is switchable as it stands (launch re-makes its setting from the files; nothing
+            downloads) - not only models that already have a strata-*.json."""
+            folder_names = {f"{prefix}{mod}".lower(), mod.lower()}
+            data = Path(os.environ.get("STRATA_DATA", "/data"))
+            for rel in (Path("Strata-data") / "models", Path("models")):
+                mdir = data / rel
+                if not mdir.is_dir():
+                    continue
+                for p in mdir.iterdir():
+                    if p.is_dir() and p.name.lower() in folder_names and any(
+                            f.suffix == ".gguf" for f in p.glob("*.gguf")):
+                        return True
+            return False
 
         def _switch_dirs(self, svc):
             """Fork patch (/switch, 0.2.x): every directory that can hold run settings or the
