@@ -30,8 +30,9 @@ WINDOWS = os.name == "nt"
 @unittest.skipUnless(os.name in ("posix", "nt"), "no qualified owner transport on this platform")
 class RuntimeTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="strata-runtime-test-")
-        self.addCleanup(self.temp.cleanup)
+        self.temp = tempfile.TemporaryDirectory(prefix="strata-runtime-test-",
+                                                ignore_cleanup_errors=(os.name == "nt"))
+        self.addCleanup(self._reap_temp)
         self.root = Path(self.temp.name)
         env = mock.patch.dict(os.environ, {"STRATA_PROFILE_DIR": str(self.root / "profiles"),
                                        "STRATA_RUNTIME_DIR": str(self.root / "runtime")})
@@ -78,6 +79,20 @@ class RuntimeTests(unittest.TestCase):
                                             "host": "127.0.0.1", "port": 0}), encoding="utf-8")
         profiles.create("local", str(self.config))
         self.addCleanup(self._stop)
+
+    def _reap_temp(self):
+        # fork: Windows refuses to unlink files a child process still has open (Linux unlinks them), and the local host
+        # of the management bridge lingers a moment after stop. Wait a beat for the child to exit, and let the runner's
+        # temp sweep remove whatever is left (TemporaryDirectory was made error-ignoring on Windows for the same reason).
+        deadline = time.time() + 3
+        while True:
+            try:
+                self.temp.cleanup()
+                return
+            except PermissionError:
+                if time.time() >= deadline:
+                    raise
+                time.sleep(0.3)
 
     def _stop(self):
         try:

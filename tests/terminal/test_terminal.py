@@ -621,6 +621,7 @@ except ImportError:
 
 
 @unittest.skipIf(MonitorApp is None, "optional Textual dependency absent")
+@mock.patch.dict(os.environ, {"STRATA_GLYPHS": "unicode"})   # fork: headless CI on Windows reads as the classic console and the product draws the solid look (correct there); these tests assert the full Unicode look, so pin the override that `legacy_console()` honours. No-op on Linux/macOS.
 class HeadlessMonitorTests(unittest.TestCase):
     def test_live_monitor_marks_activity_gaps_after_freeze_and_resets_on_restart(self):
         from rich.console import Console

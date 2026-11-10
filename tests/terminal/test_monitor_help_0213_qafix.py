@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -19,6 +21,7 @@ def last_line(app) -> str:
     return [s.text for s in app.screen._compositor.render_strips()][-1]
 
 
+@mock.patch.dict(os.environ, {"STRATA_GLYPHS": "unicode"})   # fork: same classic-console premise as the monitor tests — the key list is asserted as drawn on a modern terminal
 class Help(unittest.TestCase):
     def _run(self, view_key: str):
         async def go():

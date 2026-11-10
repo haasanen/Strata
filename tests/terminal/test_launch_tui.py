@@ -83,6 +83,7 @@ async def typed(pilot, text):
     await pilot.pause(0.1)
 
 
+@mock.patch.dict(os.environ, {"STRATA_GLYPHS": "unicode"})   # fork: headless CI on Windows reads as the classic console, where these screens draw '>' / '-'; every class here asserts the modern-terminal look, so pin the override legacy_console() honours. No-op on Linux/macOS.
 class Base(unittest.TestCase):
     def setUp(self):
         self.home = Home().__enter__()

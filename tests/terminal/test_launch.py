@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -215,11 +216,13 @@ class PresetStore(unittest.TestCase):
         with Home():
             s = S.LaunchSettings(name="IQ3_XXS 128K", family="qwen", model="IQ3_XXS", context=131072, api_key="sk-secret")
             store.save(s)
+            time.sleep(0.05)   # fork: Windows' coarse clock tick (15.6 ms) would give every timestamp below the same value, and the newest-first sort has nothing to order by
             store.save(S.LaunchSettings(name="Coder 64K", family="coder", model="IQ1_M", context=65536))
             names = [p.name for p in store.list_presets()]
             self.assertEqual(sorted(names), ["Coder 64K", "IQ3_XXS 128K"])
             back = store.load("IQ3_XXS 128K")
             self.assertEqual((back.model, back.context, back.api_key), ("IQ3_XXS", 131072, "sk-secret"))
+            time.sleep(0.05)
             store.touch_used("IQ3_XXS 128K")
             self.assertTrue(store.load("IQ3_XXS 128K").last_used)
             self.assertEqual(store.list_presets()[0].name, "IQ3_XXS 128K")          # most recently used first
