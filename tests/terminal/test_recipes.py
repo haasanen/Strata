@@ -330,8 +330,14 @@ class RecipeTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             journal.run_direct("local", "runtime.stop", revision, {"wait_s": 12},
                                lambda: (_ for _ in ()).throw(KeyboardInterrupt()))
-        latest = journal.list_runs("local")[0]
-        uncertain = journal.load("local", latest["operation_id"])
+        # fork: "the most recent run" must not ride on file mtimes: Windows stamps them in ~15.6 ms ticks (and
+        # time.time() advances on the same clock), so a burst of journal writes shares one tick and list_runs'
+        # order is a coin flip between the records - seen on Windows CI picking the earlier deadline record,
+        # whose state read "failed". The interrupted record says so itself: select it by content, not by order.
+        uncertain = next(
+            journal.load("local", item["operation_id"])
+            for item in journal.list_runs("local")
+            if "KeyboardInterrupt" in json.dumps(journal.load("local", item["operation_id"])))
         self.assertEqual(uncertain["state"], "completion_unknown")
         with self.assertRaisesRegex(profiles.ProfileError, "unsupported fields"):
             journal.begin_direct("local", "runtime.stop", revision,

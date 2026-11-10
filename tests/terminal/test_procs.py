@@ -128,7 +128,15 @@ class Procs(unittest.TestCase):
         deadline = time.monotonic() + 10
         while procs.identify(live.pid) is None and time.monotonic() < deadline:
             time.sleep(0.05)
-        found = [i.pid for i in procs.orphans_of(sys.executable)]
+        # fork: one scan can transiently miss the fresh orphan - reading a child's exe() briefly fails under
+        # runner load, and that read is what marks it a match (seen on Windows CI: found == [] with the loop
+        # above satisfied). Re-poll the scan; the assertion itself is unchanged.
+        deadline = time.monotonic() + 10
+        while True:
+            found = [i.pid for i in procs.orphans_of(sys.executable)]
+            if orphan_pid in found or time.monotonic() >= deadline:
+                break
+            time.sleep(0.5)
         self.assertIn(orphan_pid, found)
         self.assertNotIn(live.pid, found, "this test process started it: a live parent")
         self.assertEqual(procs.orphans_of(str(Path(sys.executable).with_name("not-the-engine"))), [])
