@@ -121,7 +121,10 @@ class Entrypoint(unittest.TestCase):
         self.assertNotIn("--model ", self.launch_line(log))
         code, out, err = self.stop(p)
         self.assertIn("No MODEL was set", err)
-        self.assertIn("made one", err)                                   # no API_KEY given: told how to show the generated key
+        # fork (h2): with no API_KEY the container launches --no-api-key and serves keyless, so no key is
+        # made and the upstream "Strata made one" warning deliberately stays out (docker/entrypoint.sh).
+        self.assertIn("--no-api-key", self.launch_line(log))
+        self.assertNotIn("made one", err)
 
     def test_wrong_engine_for_this_card_ends_the_start_with_a_plain_message(self):
         r = subprocess.run([SH, str(self.script)], env=self.env(STUB_ENGINE="none"), capture_output=True, text=True, timeout=30)

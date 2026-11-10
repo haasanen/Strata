@@ -37,6 +37,8 @@ MAX_IMPORT_SHARDS = 128
 SHARD = re.compile(r"(.+)-(\d{5})-of-(\d{5})\.gguf\Z", re.I)
 SUPPORTED_SELECTIONS = frozenset({"qwen/Q2_0", "qwen/IQ2_XS", "qwen/IQ3_XXS", "qwen/IQ3_S",
                                    "swift/IQ2_XS", "swift/IQ3_XXS", "swift/IQ3_S", "coder/IQ1_M",
+                                   # fork: SC117's uncensored line (setup.py FAMILIES "abliterated", offered for IQ3_S)
+                                   "abliterated/IQ3_S",
                                    "unsloth/UD-IQ4_XS", "unsloth/UD-Q4_K_XL", "unsloth/UD-Q5_K_XL", "unsloth/UD-Q6_K_XL",
                                    # round 0214: Unsloth's v3.1 sets (revision d9620119); the v3.1 UD-IQ4_XS has its own name, its Hub file names are UD-IQ4_XS's with four shards
                                    "unsloth/UD-IQ1_M", "unsloth/UD-Q2_0", "unsloth/UD-IQ2_XS", "unsloth/UD-Q2_K_XL", "unsloth/UD-IQ3_XXS",

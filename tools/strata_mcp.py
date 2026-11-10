@@ -58,7 +58,8 @@ FALLBACK_MODELS = {
     "IQ3_XXS": {"about": "3-bit i-quant, better quality, slower (more CPU work per token)", "download_gb": 75.8,
                 "ram_gb": 60, "arena_gb": 42.9},
     "IQ3_S": {"about": "3.5-bit i-quant, the best quality (matches the full model), the slowest; needs a 64 GB PC "
-                       "with little else running", "download_gb": 83.6, "ram_gb": 62, "arena_gb": 50.3},
+                       "with little else running", "download_gb": 83.6, "ram_gb": 62, "arena_gb": 50.3,
+              "families": ("qwen", "swift", "abliterated")},   # fork: SC117's uncensored line ships IQ3_S (setup.py MODELS)
     "IQ1_M": {"about": "the Coder's only size: half the experts, stored like IQ3_S (3.5 bits)", "download_gb": 58.4,
               "ram_gb": 32, "arena_gb": 23.4, "families": ("coder",)},
     "UD-IQ4_XS": {"about": "~4-bit i-quant (Unsloth Dynamic), between IQ3_S and UD-Q4_K_XL in quality; on a PC with "
@@ -130,6 +131,11 @@ FALLBACK_FAMILIES = {
     "nvfp4": {"title": "Qwen3.8-Flash-Next (NVFP4)", "about": "4-bit NVFP4 experts, NVIDIA cards; a 128 GB download, "
                                                               "~80 GB of RAM to keep every expert in RAM",
               "tag": "nvfp4-"},
+    # fork family (setup.py FAMILIES): SC117's uncensored line; last, as there — the menu numbers the earlier families by position
+    "abliterated": {"title": "Qwen3.8-Flash-Next (uncensored)", "about": "the original model with the refusal direction "
+                                                                         "removed: same files and speed as the original, "
+                                                                         "uncensored",
+                    "tag": "abliterated-"},
 }
 OWN_PATH_ENGINE = (0, 1, 45)   # the first engine that runs Qwen3.6-35B-A3B with pictures and parallel requests (setup.py MIN_ENGINE note)
 MEMORY_TIERS = ((62.0, "qwen", "IQ3_S"), (46.0, "qwen", "IQ3_XXS"), (38.0, "swift", "IQ2_XS"))   # as setup.py's: RAM + VRAM floors of the owner's 64 / 48 / 40 GB tiers
