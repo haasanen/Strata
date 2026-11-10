@@ -83,8 +83,24 @@ async def typed(pilot, text):
     await pilot.pause(0.1)
 
 
-@mock.patch.dict(os.environ, {"STRATA_GLYPHS": "unicode"})   # fork: headless CI on Windows reads as the classic console, where these screens draw '>' / '-'; every class here asserts the modern-terminal look, so pin the override legacy_console() honours. No-op on Linux/macOS.
 class Base(unittest.TestCase):
+    # fork: headless CI on Windows reads as the classic console, where these screens draw '>' / '-';
+    # every class here asserts the modern-terminal look, so pin the override legacy_console() honours.
+    # A class decorator cannot do this: mock rebinds only the methods defined in the decorated class,
+    # so subclasses run unpatched (seen on Windows CI: ModelStep still saw the '>' cursor). setUpClass
+    # is inherited, so it covers every class in this file. No-op on Linux/macOS.
+    _glyphs = mock.patch.dict(os.environ, {"STRATA_GLYPHS": "unicode"})
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._glyphs.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._glyphs.stop()
+        super().tearDownClass()
+
     def setUp(self):
         self.home = Home().__enter__()
         self.addCleanup(self.home.__exit__, None, None, None)
