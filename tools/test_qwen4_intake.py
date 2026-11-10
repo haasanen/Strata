@@ -582,7 +582,9 @@ class TablesMatchTheSources(unittest.TestCase):
 
 def serve_template_hash() -> str:
     import hashlib
-    return hashlib.sha256((ROOT / "serve" / "chat_template.jinja").read_bytes()).hexdigest()
+    # fork: Windows runners check text files out with CRLF (git autocrlf=true on the image);
+    # the reference hash is the committed LF blob's, so normalize before hashing.
+    return hashlib.sha256((ROOT / "serve" / "chat_template.jinja").read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 if __name__ == "__main__":
