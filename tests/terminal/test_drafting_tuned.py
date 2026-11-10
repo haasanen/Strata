@@ -36,6 +36,8 @@ def flag(args, name):
 
 
 class Base(unittest.TestCase):
+    # fork: see put_tuned - stamps handed out by this suite's helper, kept distinct across the whole run.
+    _last_stamp_ns = 0
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -59,10 +61,16 @@ class Base(unittest.TestCase):
     def put_tuned(self, content=TUNED_BYTES):
         path = self.data / "dflash2" / drafting.TUNED_NAME
         path.write_bytes(content)
-        # fork: a same-size rewrite can land inside one mtime tick on Windows' coarse clock, where the .ok marker's
-        # (size, mtime_ns) key would keep trusting the old bytes; stamp the new file clearly later than the marker.
+        # fork: the .ok marker trusts the file by its (size, mtime_ns) key, so a same-size rewrite must present a
+        # new mtime - but on Windows' coarse clock (ticks of ~15.6 ms) two writes can share one tick, and any
+        # fixed offset then aliases both stamped files onto the same key (seen as a MetalPerSet failure on the
+        # Windows runner, and reproducible on Linux by quantising the stamp). Stamp at least a minute into the
+        # future and never reuse an earlier stamp: every written file gets a distinct identity whatever the
+        # clock's resolution.
         st = path.stat()
-        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 60_000_000_000))
+        stamp = max(st.st_mtime_ns + 60_000_000_000, Base._last_stamp_ns + 1_000_000_000)
+        Base._last_stamp_ns = stamp
+        os.utime(path, ns=(st.st_atime_ns, stamp))
 
     def put_stock(self):
         (self.data / "dflash2" / drafting.PACK_NAME).write_bytes(STOCK_BYTES)
