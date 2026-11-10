@@ -58,7 +58,9 @@ try {
     $zip = Join-Path $work 'terminal.zip'
     try { Invoke-WebRequest -UseBasicParsing -Uri "$feed/$rel" -OutFile $zip }
     catch { Die "the download failed ($($_.Exception.Message)). Check your internet connection and run this again; nothing was installed." }
-    $got = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+    # fork: PowerShell's Get-FileHash module autoload is broken on some runner images; .NET needs no PowerShell module.
+    $fs = [System.IO.File]::OpenRead($zip)
+    try { $got = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($fs)).Replace('-', '').ToLower() } finally { $fs.Dispose() }
     if ($got -ne $want) { Die "the download does not match the release's checksum (got $got, wanted $want). It was not installed; try again." }
     Write-Host '  Checksum ok.'
 

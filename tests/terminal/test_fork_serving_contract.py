@@ -150,7 +150,7 @@ class EntrypointSandbox(unittest.TestCase):
         return None
 
 
-@unittest.skipIf(SH is None, "needs a POSIX sh")
+@unittest.skipIf(os.name == "nt" or SH is None, "needs a POSIX sh")  # fork: git-for-windows' sh mangles D:\ paths (colon stripped) in this sandbox
 class TestEntrypointForkPatches(EntrypointSandbox):
 
     def test_serves_keyless_by_default_fork_patch(self):

@@ -48,7 +48,10 @@ try {
         $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Zip
     }
-    $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Zip).Hash.ToLowerInvariant()
+    # fork: Get-FileHash's PowerShell module autoload is broken on some Windows runner images (the module fails to load);
+    # the hash is computed with .NET directly, which needs no PowerShell module at all.
+    $fs = [System.IO.File]::OpenRead($Zip)
+    try { $Actual = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($fs)).Replace('-', '').ToLowerInvariant() } finally { $fs.Dispose() }
     if ($NodeVersion -ne '24.12.0') {
         # another version has no recorded digest: say so rather than implying a verification
         [Console]::Error.WriteLine("fetch-node: WARNING - no recorded digest for v$NodeVersion; this download is NOT authenticated.")

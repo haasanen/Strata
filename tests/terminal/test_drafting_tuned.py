@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,7 +57,12 @@ class Base(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def put_tuned(self, content=TUNED_BYTES):
-        (self.data / "dflash2" / drafting.TUNED_NAME).write_bytes(content)
+        path = self.data / "dflash2" / drafting.TUNED_NAME
+        path.write_bytes(content)
+        # fork: a same-size rewrite can land inside one mtime tick on Windows' coarse clock, where the .ok marker's
+        # (size, mtime_ns) key would keep trusting the old bytes; stamp the new file clearly later than the marker.
+        st = path.stat()
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 60_000_000_000))
 
     def put_stock(self):
         (self.data / "dflash2" / drafting.PACK_NAME).write_bytes(STOCK_BYTES)
