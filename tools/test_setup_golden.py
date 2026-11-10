@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import re
 import sys
 import tempfile
@@ -78,6 +79,14 @@ def install(ram, found, argv, answers=None, extra=(), avx512=False, configs=()):
         (eng / "BUILD.json").write_text(json.dumps({"version": "0.1.32", "source": "local", "cuda_dirs": ["<cuda>"]}))
         for name, c in configs:
             (t / name).write_text(json.dumps(c))
+            # fork: stamp pre-existing configs a minute into the past. Windows mtimes tick at ~15.6 ms, so a seed
+            # written here can share one tick with the config setup.py writes moments later; the
+            # `sorted(t.glob(...), key=st_mtime)[-1]` further down then breaks the tie by glob order and sometimes
+            # reports the OLD config as the one this run wrote (seen on Windows CI: RerunKeepsSize's
+            # test_a_named_size_still_wins saw iq3_xxs instead of iq3_s). An explicit past stamp makes "the file
+            # this run just wrote" the newest file at any clock resolution; order among several seeds is kept.
+            st = os.stat(t / name)
+            os.utime(t / name, ns=(st.st_atime_ns - 60_000_000_000, st.st_mtime_ns - 60_000_000_000))
         asked = []
 
         def fake_input(prompt=""):
