@@ -23,9 +23,16 @@ ARG RUNTIME_BASE=ubuntu:24.04
 # ---- 1. compile the engine and make its component package
 FROM ${CUDA_IMAGE} AS engine-build
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PATH=/venv/bin:$PATH
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential ca-certificates git libgomp1 libatomic1 python3 python3-pip python3-venv unzip \
-    && rm -rf /var/lib/apt/lists/*
+# 2026-11-10: the Ubuntu mirror pool is briefly out of sync when the security pocket republishes
+# (a 404 on libperl5.38t64, pulled by git, killed two Strata builds); re-running update fetches the
+# index that matches the pool, so a stale-index 404 costs seconds instead of the whole build.
+RUN set -e; pkgs="build-essential ca-certificates git libgomp1 libatomic1 python3 python3-pip python3-venv unzip"; \
+    ok=0; for i in 1 2 3; do \
+      if apt-get update && apt-get install -y --no-install-recommends $pkgs; then ok=1; break; fi; \
+      apt-get clean || true; sleep 20; \
+    done; \
+    [ "$ok" = 1 ] || { echo "apt install failed three times (Ubuntu mirror pool out of sync?)" >&2; exit 1; }; \
+    rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
 ARG CUDA_ARCHITECTURES="75;80;86;89;120"
@@ -71,7 +78,13 @@ FROM ${RUNTIME_BASE} AS terminal
 ARG STRATA_COMMIT=
 ENV STRATA_BUILD_COMMIT=${STRATA_COMMIT}
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates git && rm -rf /var/lib/apt/lists/*
+RUN set -e; pkgs="python3 ca-certificates git"; \
+    ok=0; for i in 1 2 3; do \
+      if apt-get update && apt-get install -y --no-install-recommends $pkgs; then ok=1; break; fi; \
+      apt-get clean || true; sleep 20; \
+    done; \
+    [ "$ok" = 1 ] || { echo "apt install failed three times (Ubuntu mirror pool out of sync?)" >&2; exit 1; }; \
+    rm -rf /var/lib/apt/lists/*
 COPY . /src/
 # the sources have no .git here (dockerignored): the CI passes the commit the build is from, package_terminal.py writes it to COMMIT
 ARG STRATA_COMMIT=
@@ -95,8 +108,13 @@ RUN cd /opt/strata/terminal && STRATA_CONTROL_INSTALL=1 STRATA_INSTALL_DIR=/opt/
 FROM ${RUNTIME_BASE}
 ARG STRATA_VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates libgomp1 libatomic1 libnuma1 zlib1g \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+RUN set -e; pkgs="tini ca-certificates libgomp1 libatomic1 libnuma1 zlib1g"; \
+    ok=0; for i in 1 2 3; do \
+      if apt-get update && apt-get install -y --no-install-recommends $pkgs; then ok=1; break; fi; \
+      apt-get clean || true; sleep 20; \
+    done; \
+    [ "$ok" = 1 ] || { echo "apt install failed three times (Ubuntu mirror pool out of sync?)" >&2; exit 1; }; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 COPY --from=terminal /opt/strata/terminal /opt/strata/terminal
 COPY --from=terminal /opt/strata/seed /opt/strata/seed
 COPY --from=engine-build /engine/ /opt/strata/components/engine/

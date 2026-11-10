@@ -78,7 +78,13 @@ RUN set -e; \
       sycl) pkgs="$pkgs libze1 libze-intel-gpu1 intel-opencl-icd" ;; \
       *) echo "FLAVOR must be cuda, hip or sycl"; exit 1 ;; \
     esac; \
-    apt-get update; apt-get install -y --no-install-recommends $pkgs; \
+    # a fresh security-pocket publish 404s the debs the just-refreshed index names (observed 2026-11-10:
+    # libperl5.38t64 5.38.2-3.2ubuntu0.7 gone mid-build); re-updating fetches the index that matches the pool
+    ok=0; for i in 1 2 3; do \
+      if apt-get update && apt-get install -y --no-install-recommends $pkgs; then ok=1; break; fi; \
+      apt-get clean || true; sleep 20; \
+    done; \
+    [ "$ok" = 1 ] || { echo "apt install failed three times (Ubuntu mirror pool out of sync?)" >&2; exit 1; }; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 COPY --from=terminal /opt/strata/terminal /opt/strata/terminal
