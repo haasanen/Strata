@@ -73,7 +73,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates cmake ninja-build ccache
           cmake --version | head -1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
       - name: llama.cpp (ggml) at the pinned commit
@@ -82,7 +82,7 @@ jobs:
           mkdir llama.cpp && cd llama.cpp && git init -q
           git remote add origin https://github.com/ggml-org/llama.cpp.git
           git fetch -q --depth 1 origin "$commit" && git checkout -q FETCH_HEAD
-      - uses: actions/cache@v4
+      - uses: actions/cache@v4.3.0
         with:
           path: .ccache
           key: ccache-cuda${{ matrix.cuda }}-${{ hashFiles('CMakeLists.txt', 'src/**', 'include/**', 'cmake/**') }}
@@ -109,7 +109,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates cmake ninja-build ccache
           cmake --version | head -1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
       - name: llama.cpp (ggml) at the pinned commit
@@ -118,7 +118,7 @@ jobs:
           mkdir llama.cpp && cd llama.cpp && git init -q
           git remote add origin https://github.com/ggml-org/llama.cpp.git
           git fetch -q --depth 1 origin "$commit" && git checkout -q FETCH_HEAD
-      - uses: actions/cache@v4
+      - uses: actions/cache@v4.3.0
         with:
           path: .ccache
           key: ccache-hip72-${{ hashFiles('CMakeLists.txt', 'src/**', 'include/**', 'cmake/**') }}
@@ -152,7 +152,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             intel-oneapi-compiler-dpcpp-cpp-2026.1=2026.1.1-325 intel-oneapi-mkl-devel-2026.1=2026.1.0-236
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
       - name: llama.cpp (ggml) at the pinned commit
@@ -161,7 +161,7 @@ jobs:
           mkdir llama.cpp && cd llama.cpp && git init -q
           git remote add origin https://github.com/ggml-org/llama.cpp.git
           git fetch -q --depth 1 origin "$commit" && git checkout -q FETCH_HEAD
-      - uses: actions/cache@v4
+      - uses: actions/cache@v4.3.0
         with:
           path: .ccache
           key: ccache-sycl-${{ hashFiles('CMakeLists.txt', 'src/**', 'include/**', 'sycl/**') }}
@@ -188,7 +188,7 @@ jobs:
       METAL_CPP_URL: https://developer.apple.com/metal/cpp/files/metal-cpp_26.zip
       METAL_CPP_SHA256: 4df3c078b9aadcb516212e9cb03004cbc5ce9a3e9c068fa3144d021db585a3a4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
       - name: Tools
@@ -204,7 +204,7 @@ jobs:
           mkdir llama.cpp && cd llama.cpp && git init -q
           git remote add origin https://github.com/ggml-org/llama.cpp.git
           git fetch -q --depth 1 origin "$commit" && git checkout -q FETCH_HEAD
-      - uses: actions/cache@v4
+      - uses: actions/cache@v4.3.0
         with:
           path: .ccache
           key: ccache-metal-${{ hashFiles('CMakeLists.txt', 'src/**', 'include/**', 'metal/**') }}

@@ -16,6 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - name: Run the fork serving contract
         run: cd tests/terminal && python3 -m unittest -v test_fork_serving_contract

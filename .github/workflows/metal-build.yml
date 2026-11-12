@@ -30,7 +30,7 @@ jobs:
       METAL_CPP_URL: https://developer.apple.com/metal/cpp/files/metal-cpp_26.zip
       METAL_CPP_SHA256: 4df3c078b9aadcb516212e9cb03004cbc5ce9a3e9c068fa3144d021db585a3a4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - name: Tools
         run: brew install ninja
       - name: metal-cpp

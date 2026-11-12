@@ -49,7 +49,7 @@ jobs:
     outputs:
       flavors: ${{ steps.list.outputs.flavors }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           ref: ${{ inputs.source_ref || inputs.release_tag }}
       - name: Which flavors does the release have a package for
@@ -80,7 +80,7 @@ jobs:
       matrix:
         flavor: ${{ fromJSON(needs.plan.outputs.flavors) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           ref: ${{ inputs.source_ref || inputs.release_tag }}
       - name: Free disk space (the runner has about 14 GB; a package plus its image needs about 10 GB)
