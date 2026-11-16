@@ -542,6 +542,24 @@ def launch_dir() -> Path:
     return d
 
 
+def launch_name_of(s) -> str:
+    """The name of the launch these settings make (Runner.name): its run config is launch/<name>.json."""
+    return S.slug(s.name or (s.model or "model") + "-" + S.context_label(s.context).lower())
+
+
+def saved_launch_word(name: str) -> str | None:
+    """The Drafting word the launch `name` (Runner.name) was given last time, as its own run config (launch/<name>.json) keeps it: auto | mtp | dflash2 | off,
+    or None when there is none or it cannot be read. The TUI's Drafting step and Runner.keep_saved_word read it."""
+    try:
+        from strata_control import drafting
+        prev = read_config(launch_dir() / f"{name}.json")
+        word = prev.get("drafting") if isinstance(prev, dict) else None
+        word = word.strip().lower() if isinstance(word, str) else None
+        return word if word in drafting.MODES else None
+    except Exception:                                        # noqa: BLE001 - no readable file, no word
+        return None
+
+
 # ----------------------------------------------------------------------------------------------- the runner
 
 
@@ -614,7 +632,7 @@ class Runner:
 
     @property
     def name(self) -> str:
-        return S.slug(self.s.name or (self.s.model or "model") + "-" + S.context_label(self.s.context).lower())
+        return launch_name_of(self.s)
 
     @property
     def profile(self) -> str:
@@ -953,7 +971,8 @@ class Runner:
         if sys.platform == "darwin":
             # a Mac's setup (Control mode, strata_control/mac_fit.py) takes fewer options (no --kv, --gpu, speed projection)
             keep = {"--yes", "--no-start", "--family", "--model", "--context", "--vision", "--data-dir", "--gguf-dir", "--move-data",
-                    "--set-default-data-dir", "--feed", "--drafter"}     # --drafter: setup.py's Mac step fetches the draft layer only where the start runs the MTP
+                    "--set-default-data-dir", "--feed", "--drafter", "--mtp"}     # --drafter / --mtp: setup.py's Mac step fetches the draft layer only where the
+                                                                                  # start runs the MTP, and not after a Drafting Off (`--mtp off`)
             flags = ("--yes", "--no-start", "--move-data", "--set-default-data-dir")
             out, i = [], 0
             while i < len(args):
@@ -1003,8 +1022,8 @@ class Runner:
         setup "--mtp off", and setup keeps that at every later run, so Auto read it as "the draft layer is off" and started without a drafter (0.2.13.1, REAL-USE-1).
         Then setup runs again with "--mtp on", and the start is the one a first launch with that choice gets.  A model the feed says has no draft layer stays off."""
         s = self.s
-        if s.mtp is not None or s.drafting is None or s.family not in modelstate.HELPER_FAMILIES or sys.platform == "darwin":
-            return False                                     # (a Mac's setup takes no --mtp word: setup_args)
+        if s.mtp is not None or s.drafting is None or s.family not in modelstate.HELPER_FAMILIES:
+            return False                                     # (a Mac's setup takes the --mtp word too: setup_args)
         from strata_control import drafting
         if drafting.normalize(s.drafting) == "off" or self.resolved_drafting(s.family) == "off":
             return False
@@ -1296,6 +1315,7 @@ class Runner:
             elif prog.get("step"):
                 self.emit("model", f"Setup step {prog['step']}", None, step=prog.get("step"))
         code = p.wait()
+        self.note_setup_lines(lines)
         if code != 0:
             err = ""
             for line in reversed(lines):
@@ -2379,6 +2399,7 @@ class Runner:
     def plan(self) -> dict:
         s = self.s
         self.keep_saved_off()                                # the plan names the drafter the start will run
+        self.keep_saved_word()
         self.check_own_files()
         warns = [n.line() for n in (*S.check_access(s),)]
         warns += self.preflight_words()
@@ -2433,6 +2454,31 @@ class Runner:
         finally:
             self._layer_fetch = False
 
+    def note_setup_lines(self, lines: list[str]) -> None:
+        """Remember that setup could not fetch the draft layer because this computer is offline: tools/mtp_fetch.py's own line (netpolicy "offline"),
+        after which setup goes on without the layer (setup.fetch_mtp, mtp_fetch exit 5)."""
+        from strata_control import netpolicy
+        tail = netpolicy.WORDS["offline"].split("{host}", 1)[1].format(what="the draft layer")
+        if any(tail in str(line) for line in lines or []):
+            self._mtp_offline = True
+
+    def say_mtp_offline(self, base_path: Path) -> None:
+        """Once per launch: the draft layer could not be downloaded offline and the start has no other drafter (drafting.MTP_OFFLINE_NOTE, shown like the
+        DFlash2 drafter's offline line). The start's own "Drafting: off (no drafter is downloaded yet)" stays as it is."""
+        if not getattr(self, "_mtp_offline", False) or getattr(self, "_mtp_offline_said", False):
+            return
+        from strata_control import drafting
+        try:
+            cfg = read_config(base_path)
+            want = self.drafting_inputs(cfg)
+            if drafting.normalize(want["mode"]) == "off" or drafting.decide(**want, **self.drafting_signals(cfg, want)).drafter != "off":
+                return                                       # Off was chosen, or another drafter runs: nothing to say
+        except Exception:                                    # noqa: BLE001 - a note is never a reason to stop a launch
+            return
+        self._mtp_offline_said = True
+        self.notices.append(drafting.MTP_OFFLINE_NOTE)
+        self.emit("model", drafting.MTP_OFFLINE_NOTE, None, level="warn")
+
     def keep_saved_off(self) -> None:
         """A launch without a Drafting word keeps the Off this launch ran with last time (its own run config, launch/<name>.json), unless the model's installed
         config holds a Drafting choice of its own (the app's Models screen). Off is only ever the person's choice, and a chosen Off holds: where setup does not run
@@ -2449,6 +2495,29 @@ class Runner:
             if path is not None and read_config(path).get("drafting") is not None:
                 return
             s.drafting = "off"
+        except Exception:                                    # noqa: BLE001 - an unreadable file keeps the launch as it was
+            return
+
+    def keep_saved_word(self) -> None:
+        """A launch without a Drafting word keeps the word this launch was given last time (Auto, MTP or DFlash2; Off is keep_saved_off's and is never touched here).
+        Owner 11-15: a drafter the person chose stays chosen, the way Off does; only a new explicit choice changes it, Auto included. (boxia d3d and l620 C2,
+        0.2.14.1: the restart with no word wrote null where "auto" was, and a chosen MTP or DFlash2 went back to Auto.) The saved word is what the person chose,
+        never the drafter a start fell back to (drafting.decide: a chosen drafter whose file is not here starts the other one when it is on disk and safe on the
+        card, with its note). Not carried over: when the model's installed config holds a Drafting choice of its own (the app's Models screen, a later choice)
+        or has its draft layer switched off with no choice (also later than the launch's word), and for a model with no Drafting choice."""
+        s = self.s
+        if s.drafting is not None:
+            return
+        try:
+            from strata_control import drafting
+            word = saved_launch_word(self.name)
+            if word is None or word == "off" or modelstate.drafting_for_family(word, s.family) is None:
+                return
+            path = self.catalog.installed_config(self.catalog.tag_of(s.family, s.model))
+            installed = read_config(path) if path is not None else {}
+            if isinstance(installed, dict) and (installed.get("drafting") is not None or installed.get("mtp") is False):
+                return
+            s.drafting = drafting.normalize(word)
         except Exception:                                    # noqa: BLE001 - an unreadable file keeps the launch as it was
             return
 
@@ -2474,6 +2543,7 @@ class Runner:
     def run(self, *, start: bool = True) -> Result:
         self.restart_after = start
         self.keep_saved_off()
+        self.keep_saved_word()                               # a restart with no word keeps the saved one (it was written as null before)
         try:
             self.check_own_files()                         # a wrong --model-path is said before the engine is downloaded
             if start:
@@ -2486,6 +2556,7 @@ class Runner:
             self.check_cancel()
             self.ensure_drafter(base)
             base = self.fetch_missing_drafter(base)
+            self.say_mtp_offline(base)
             self.check_cancel()
             self.check_saved_state_readable()
             self.emit("config", "Writing this launch's settings…")
