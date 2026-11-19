@@ -421,6 +421,15 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         text = (REPO / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
         self.assertIn("group: strata-build-push", text, "builds are no longer serialized (tag races return)")
 
+    def test_forkver_paginates_the_registry_tag_list(self):
+        """2026-11-19: 0.2.16-h1 got silently CLOBBERED by a rebuild - the counter read tags/list
+        in one request (ghcr caps a page at ~100 of the 143 tags, oldest first) and saw no h-tags.
+        The counter must follow Link rel=next and prefix the RELATIVE next URLs."""
+        text = (REPO / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+        self.assertIn('rel="next"', text, "the -h<N> counter stopped following ghcr tags/list pagination")
+        self.assertIn('"https://ghcr.io" + nxt', text,
+                      "the next-page Link is relative: without the host prefix the follow fetches nothing")
+
     def test_vision_allowed_for_ud_q4_pack(self):
         """b28bab56 (#967): images must stay allowed with the UD-Q4_K_XL pack."""
         s = (TERM / "setup.py").read_text(encoding="utf-8")

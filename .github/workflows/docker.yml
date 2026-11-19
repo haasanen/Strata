@@ -117,13 +117,29 @@ jobs:
           # read from the ghcr tag list, so it increments on every build.
           UPSTREAM=$(curl -s "https://api.github.com/repos/Niko1221/Strata/releases/latest" | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
           test -n "$UPSTREAM" || { echo "::error::could not read upstream release version"; exit 1; }
-          TOK=$(curl -s "https://ghcr.io/token?scope=repository:${IMAGE_NAME}:pull&service=ghcr.io" | python3 -c "import json,sys;print(json.load(sys.stdin)['token'])")
-          LAST=$(curl -s -H "Authorization: Bearer $TOK" "https://ghcr.io/v2/${IMAGE_NAME}/tags/list" | UP="$UPSTREAM" python3 -c "
-          import json,os,re,sys
-          tags=json.load(sys.stdin).get('tags') or []
-          pat=re.compile('^'+re.escape(os.environ['UP'])+r'-h([0-9]+)$')
-          ns=[int(m.group(1)) for t in tags if (m:=pat.match(t))]
-          print(max(ns) if ns else 0)")
+          # Paginate the tag list: ghcr caps tags/list at ~100 entries and its Link rel=next
+          # URLs are RELATIVE. A single unpaged read sees only the OLDEST 100 tags, so once the
+          # package crosses 100 tags (2026-11-19: 143) the -h<N> counter reads zero for the
+          # current upstream version and a rebuild silently CLOBBERS h1 instead of publishing h2.
+          LAST=$(UPSTREAM="$UPSTREAM" IMAGE_NAME="$IMAGE_NAME" python3 - <<'PY'
+          import json, os, re, urllib.request
+          up, img = os.environ["UPSTREAM"], os.environ["IMAGE_NAME"]
+          tok = json.load(urllib.request.urlopen(f"https://ghcr.io/token?scope=repository:{img}:pull&service=ghcr.io", timeout=30))["token"]
+          pat = re.compile("^" + re.escape(up) + r"-h([0-9]+)$")
+          ns, url = [], f"https://ghcr.io/v2/{img}/tags/list?n=100"
+          while url:
+              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  ns += [int(m.group(1)) for t in (json.load(r).get("tags") or []) if (m := pat.match(t))]
+                  link = r.headers.get("Link") or ""
+              url = None
+              for part in link.split(","):
+                  if 'rel="next"' in part:
+                      nxt = part[part.find("<") + 1:part.find(">")]
+                      url = nxt if nxt.startswith("http") else "https://ghcr.io" + nxt
+          print(max(ns) if ns else 0)
+          PY
+          )
           N=$((LAST + 1))
           echo "upstream=$UPSTREAM" >> "$GITHUB_OUTPUT"
           echo "tag=$UPSTREAM-h$N" >> "$GITHUB_OUTPUT"
