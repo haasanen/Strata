@@ -295,6 +295,13 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         self.assertNotIn("/engine/", rules,
                          "Dockerfile.src.dockerignore ignores engine/ again: the from-source build loses the engine")
 
+    def test_merge_guard_runs_the_contract_where_it_lives(self):
+        """2026-11-19: after 0.2.16 moved tests under terminal/, merge-guard's old 'cd tests/terminal'
+        made the guard itself red on every push - a red watchdog reads as a broken merge."""
+        text = (REPO / ".github" / "workflows" / "merge-guard.yml").read_text(encoding="utf-8")
+        self.assertIn("cd terminal/tests/terminal && python3 -m unittest -v test_fork_serving_contract", text,
+                      "merge-guard is not running the contract at its current path")
+
 
     def test_switch_post_exits_when_idle_not_mid_request(self):
         """5ce26904: /switch must wait for the request FIFO; exiting mid-request killed the caller's own generation."""

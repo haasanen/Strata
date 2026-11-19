@@ -18,4 +18,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4.4.0
       - name: Run the fork serving contract
-        run: cd tests/terminal && python3 -m unittest -v test_fork_serving_contract
+        # 0.2.16 moved the Terminal app under terminal/; the test module now lives there.
+        run: cd terminal/tests/terminal && python3 -m unittest -v test_fork_serving_contract
