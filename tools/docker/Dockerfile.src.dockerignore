@@ -8,8 +8,13 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# terminal/setup.py outputs and downloads (engine, packs, models, logs)
-/engine/
+# terminal/setup.py outputs and downloads (packs, models, logs)
+# fork patch: "/engine/" stays OUT of this list. 0.2.16 moved the engine sources INTO
+# engine/ (package_terminal.py reads engine/CMakeLists.txt, the CUDA stage builds it);
+# BuildKit applies this file to the whole context (dockerfile2dockerignore), so ignoring
+# /engine/ strips the source and the from-source build dies on a missing CMakeLists.txt.
+# The runtime dirs this rule once covered (setup.py's downloaded engine/, packs, models)
+# never exist in a fresh CI checkout anyway.
 /build/
 /build*/
 /dist/

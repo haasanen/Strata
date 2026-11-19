@@ -285,6 +285,16 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         self.assertIn("file: tools/docker/Dockerfile.src", text,
                       "the build no longer points at the Dockerfile 0.2.16 moved out of the repo root")
 
+    def test_src_dockerignore_keeps_the_engine_source(self):
+        """2026-11-19: the first 0.2.16 h-build died on a missing /src/engine/CMakeLists.txt -
+        BuildKit applies tools/docker/Dockerfile.src.dockerignore to the whole context
+        (dockerfile2dockerignore), and the stale /engine/ rule there stripped the engine
+        sources 0.2.16 moved into the tree (package_terminal.py + the CUDA stage need them)."""
+        text = (REPO / "tools" / "docker" / "Dockerfile.src.dockerignore").read_text(encoding="utf-8")
+        rules = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
+        self.assertNotIn("/engine/", rules,
+                         "Dockerfile.src.dockerignore ignores engine/ again: the from-source build loses the engine")
+
 
     def test_switch_post_exits_when_idle_not_mid_request(self):
         """5ce26904: /switch must wait for the request FIFO; exiting mid-request killed the caller's own generation."""
