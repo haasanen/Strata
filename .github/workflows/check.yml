@@ -125,6 +125,19 @@ jobs:
       - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
+      - name: Re-checkout with autocrlf off (source-grep tests expect LF)
+        shell: bash
+        run: |
+          # Windows runners set core.autocrlf=true; the 0.2.16 host and serve tests grep
+          # app sources with multi-line LF patterns (monitor-gpu-load-hint,
+          # shell-languages, serve test_web_history, agent-model-name), so on a CRLF
+          # checkout the greps miss and the tests fail.  Re-materialize the tree under
+          # autocrlf=false so the Windows lanes see the same bytes the Linux and macOS
+          # lanes do.  Files pinned in .gitattributes (bat/cmd/ps1 eol=crlf) keep their
+          # endings: attributes win over autocrlf.
+          git config core.autocrlf false
+          git rm --cached -qr .
+          git reset --hard
       - uses: actions/setup-python@v5.6.0
         with:
           python-version: '3.12'
