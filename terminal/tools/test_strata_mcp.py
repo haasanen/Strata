@@ -514,6 +514,7 @@ class Install(FakeRoot):
         self.assertTrue(err)
         self.assertIn("cancelled before it started", res["error"])
         self.assertIsNone(self.strata.install_job(), "no job was launched")
+        time.sleep(0.05)                                                           # Windows' monotonic clock ticks at ~15.6 ms: without a stagger this start's asked stamp can land on the cancel's tick and the guard reads it as "asked before the cancel" (Linux/mac monotonic is ns-exact, which is why only the Windows lane is red)
         res, err = self.call("strata_install", {"family": "coder", "confirm": True})   # a start asked for after the cancel goes ahead
         self.assertFalse(err, res)
         self.wait_job()

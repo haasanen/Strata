@@ -61,5 +61,11 @@ jobs:
           PY
       - name: Run full server suite without terminal packages
         shell: bash
+        env:
+          # fork: discovery loads these test files as BARE top-level modules (top_level = the start dir), and all but one
+          # carry their own sys.path bootstrap of terminal/; the first-imported one alphabetically (test_abort_sync) does
+          # not, so its `from serve import ...` dies until a sibling has run. terminal/ on PYTHONPATH makes serve resolvable
+          # from the very first import - the same effect as every sibling's own bootstrap. (Red on the 0.2.16 and 0.2.17 merges.)
+          PYTHONPATH: terminal
         run: |
           "$RUNNER_TEMP/strata-runtime-venv/bin/python" -m unittest discover -s terminal/serve -p 'test_*.py'
