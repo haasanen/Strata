@@ -306,6 +306,21 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         self.assertGreaterEqual(text.count("Authorization: Bearer ${FORK_PAT}"), 2,
                                 "releases/latest must be authenticated in BOTH the sync and the forkver steps")
 
+    def test_inkling_shape_carries_libgomp(self):
+        """2026-11-23: docker.yml run 45131320359 refused the inkling2 shape - strata-inkling links
+        OpenMP whenever the toolchain provides it (engine/src/inkling2/CMakeLists.txt), and
+        binary_deps.py stopped counting libgomp as base OS at 0.2.14 ("refusing to package:
+        strata-inkling needs libgomp.so.1"). The inkling collect step must bundle libgomp from the
+        build container - the same way collect_libs bundles libatomic - and carry its notice."""
+        text = (REPO / "tools" / "docker" / "Dockerfile.src").read_text(encoding="utf-8")
+        ink = [l for l in text.splitlines() if 'collect_libs.py --binary "$ink_bin"' in l]
+        self.assertTrue(ink, "the inkling2 shape collect step vanished from Dockerfile.src")
+        self.assertIn("--bundle-system 'libgomp.so.1'", ink[0],
+                      "inkling2 packaging hits the libgomp refusal again: bundle libgomp at collect time")
+        notice = REPO / "tools" / "packaging" / "notices" / "libgomp.txt"
+        self.assertTrue(notice.is_file() and notice.read_text(encoding="utf-8").strip(),
+                        "collect_libs.py warns without packaging/notices/libgomp.txt; a bundled library without its notice is incomplete")
+
     def test_merge_guard_runs_the_contract_where_it_lives(self):
         """2026-11-19: after 0.2.16 moved tests under terminal/, merge-guard's old 'cd tests/terminal'
         made the guard itself red on every push - a red watchdog reads as a broken merge."""

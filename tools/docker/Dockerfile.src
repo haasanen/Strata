@@ -103,7 +103,11 @@ RUN set -e; \
       mkdir -p /stage-inkling /shapes/inkling2/engine; \
       cp "$ink_bin" /stage-inkling/strata-inkling; \
       cp /stage/BUILD.json /stage-inkling/BUILD.json; \
-      python3 tools/packaging/collect_libs.py --binary "$ink_bin" --search /usr/local/cuda/lib64 --out /stage-inkling --also 'libcublasLt.so*'; \
+      : 'fork (2026-11-23): strata-inkling links OpenMP whenever the toolchain provides it (engine/src/inkling2/CMakeLists.txt ' \
+        'find_package(OpenMP)), and binary_deps.py stopped counting libgomp as base OS at 0.2.14 - packaging the CUDA build of ' \
+        'v0.2.20 refused the shape ("strata-inkling needs libgomp.so.1", docker.yml run 45131320359). Bundle it from the build ' \
+        'container like collect_libs bundles libatomic for the AMD engine (notice: packaging/notices/libgomp.txt).'; \
+      python3 tools/packaging/collect_libs.py --binary "$ink_bin" --search /usr/local/cuda/lib64 --out /stage-inkling --also 'libcublasLt.so*' --bundle-system 'libgomp.so.1'; \
       python3 tools/packaging/package_engine.py --src /stage-inkling --backend cuda --shape inkling2 --version "$ver" --out /shapes/inkling2/engine $archs --arch "compute_$last" \
           --min-driver nvidia=$mindriver --variant cuda$cudamajor --platform linux-x86_64 --build-id "docker-source-${ver}-cuda${cudafull}" --include SYSTEM-LIBS.txt; \
     fi; \
