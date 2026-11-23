@@ -4394,7 +4394,8 @@ class Service:
     def check_model(self, req) -> dict | None:
         """#6621: reject mismatched Strata catalog model IDs (e.g. requesting `inkling-2-mini-sq-10` while Qwen is
         loaded) and, when strict_model is enabled (--strict-model / strict_model: true / STRATA_STRICT_MODEL=1), any
-        unrecognized model ID.  Generic client placeholders ('gpt-4', 'x', etc.) stay accepted by default (#297)."""
+        unrecognized model ID.  Generic client placeholders ('gpt-4', 'x', etc.) and the loaded model's family base
+        alias (e.g. 'hy4-flash' when serving 'hy4-flash-sq-64') stay accepted by default (#297)."""
         asked = req.get("model") if isinstance(req, dict) else None
         if not isinstance(asked, str) or not asked.strip():
             return None
@@ -4403,8 +4404,18 @@ class Service:
         if asked_s in names:
             return None
         asked_l = asked_s.lower()
-        if asked_l in {n.strip().lower() for n in names if n}:
+        loaded_l = {n.strip().lower() for n in names if n}
+        if asked_l in loaded_l:
             return None
+        # fork: backport of upstream 6bd3485da (2026-11-23, ~2h after the v0.2.20 tag) — v0.2.20 shipped check_model
+        # rejecting a Strata catalog family's base alias, so test_hy4_serve_e2e's anthropic-route test (serving the
+        # quantized variant hy4-flash-sq-64, requesting the family base hy4-flash) 404'd. Self-heals on the v0.2.21
+        # merge; only this alias hunk is taken — the rest of that commit (inkling dialect, /health `family`) is unreleased.
+        if not self.strict_model:
+            if any(n.startswith(asked_l + "-") for n in loaded_l):
+                return None
+            if (self.hy4 and asked_l == "hy4-flash") or (self.inkling and asked_l == "inkling-2-mini"):
+                return None
         is_strata_id = any(asked_l.startswith(p) for p in self._STRATA_MODEL_PREFIXES)
         if not self.strict_model and not is_strata_id:
             return None
