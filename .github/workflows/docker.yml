@@ -46,8 +46,19 @@ jobs:
           # release appearing is the only thing that triggers a merge;
           # unreleased main commits wait until upstream ships them.
           git remote add upstream https://github.com/Niko1221/Strata.git
-          REL=$(curl -s "https://api.github.com/repos/Niko1221/Strata/releases/latest" | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'])")
-          test -n "$REL" || { echo "::error::could not read the latest upstream release"; exit 1; }
+          # The anonymous read shares the runner IP's 60/h quota and died on its
+          # rate-limit body twice (2026-11-22 sync step, 2026-11-23 forkver step):
+          # read authenticated with this step's FORK_PAT, retry, and on failure
+          # print the HTTP status/body so a dead quota cannot look like a mystery.
+          reljson=/tmp/strata-latest-release.json
+          rel_read=
+          for i in 1 2 3; do
+            code=$(curl -sS -o "$reljson" -w '%{http_code}' -H "Authorization: Bearer ${FORK_PAT}" "https://api.github.com/repos/Niko1221/Strata/releases/latest") || code=curlfail
+            if [ "$code" = 200 ] && REL=$(python3 -c "import json;print(json.load(open('$reljson'))['tag_name'])" 2>/dev/null) && [ -n "${REL:-}" ]; then rel_read=1; break; fi
+            echo "releases/latest attempt $i: HTTP $code body $(head -c 150 "$reljson" 2>/dev/null)" >&2
+            sleep 20
+          done
+          test -n "$rel_read" || { echo "::error::could not read the latest upstream release (3 attempts; the status/body of each is above)"; exit 1; }
           echo "latest upstream release: $REL"
           git fetch upstream "refs/tags/${REL}:refs/tags/${REL}"
           if git merge-base --is-ancestor "${REL}^{commit}" HEAD; then
@@ -107,6 +118,8 @@ jobs:
 
       - name: Compute fork version tag
         id: forkver
+        env:
+          FORK_PAT: ${{ secrets.FORK_PAT }}
         run: |
           # Tag images with the upstream Strata version plus our fork build
           # number: <upstream>-h<N> (e.g. 0.1.40.1-h1) — the same convention
@@ -115,8 +128,18 @@ jobs:
           # releases like 0.1.40.1 do not bump CMakeLists.txt). N is 1 +
           # the highest -h<N> already published for that upstream version,
           # read from the ghcr tag list, so it increments on every build.
-          UPSTREAM=$(curl -s "https://api.github.com/repos/Niko1221/Strata/releases/latest" | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
-          test -n "$UPSTREAM" || { echo "::error::could not read upstream release version"; exit 1; }
+          # Same authenticated + retry + status/body pattern as the sync step: the
+          # bare anonymous curl died on a rate-limit body here on 2026-11-23 (run
+          # 45111476430), exactly as it had in the sync step on 2026-11-22.
+          reljson=/tmp/strata-latest-release.json
+          ver_read=
+          for i in 1 2 3; do
+            code=$(curl -sS -o "$reljson" -w '%{http_code}' -H "Authorization: Bearer ${FORK_PAT}" "https://api.github.com/repos/Niko1221/Strata/releases/latest") || code=curlfail
+            if [ "$code" = 200 ] && UPSTREAM=$(python3 -c "import json;print(json.load(open('$reljson'))['tag_name'].lstrip('v'))" 2>/dev/null) && [ -n "${UPSTREAM:-}" ]; then ver_read=1; break; fi
+            echo "releases/latest attempt $i: HTTP $code body $(head -c 150 "$reljson" 2>/dev/null)" >&2
+            sleep 20
+          done
+          test -n "$ver_read" || { echo "::error::could not read upstream release version (3 attempts; the status/body of each is above)"; exit 1; }
           # Paginate the tag list: ghcr caps tags/list at ~100 entries and its Link rel=next
           # URLs are RELATIVE. A single unpaged read sees only the OLDEST 100 tags, so once the
           # package crosses 100 tags (2026-11-19: 143) the -h<N> counter reads zero for the

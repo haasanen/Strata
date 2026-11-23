@@ -295,6 +295,17 @@ class TestForkContractsOutsideTheEntrypoint(unittest.TestCase):
         self.assertNotIn("/engine/", rules,
                          "Dockerfile.src.dockerignore ignores engine/ again: the from-source build loses the engine")
 
+    def test_release_fetch_is_authenticated_and_retried(self):
+        """2026-11-23: the anonymous curl to releases/latest died on the shared runner IP's
+        60/h rate-limit body twice (sync step 2026-11-22, forkver step 2026-11-23 —
+        KeyError 'tag_name', a quota body read as if it were the release). Both reads
+        authenticate with FORK_PAT, retry, and print the status/body when they fail."""
+        text = (REPO / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+        self.assertNotIn('curl -s "https://api.github.com/repos/Niko1221/Strata/releases/latest"', text,
+                         "an unauthenticated releases/latest read is back: the shared runner IP gets rate-limited")
+        self.assertGreaterEqual(text.count("Authorization: Bearer ${FORK_PAT}"), 2,
+                                "releases/latest must be authenticated in BOTH the sync and the forkver steps")
+
     def test_merge_guard_runs_the_contract_where_it_lives(self):
         """2026-11-19: after 0.2.16 moved tests under terminal/, merge-guard's old 'cd tests/terminal'
         made the guard itself red on every push - a red watchdog reads as a broken merge."""
