@@ -155,8 +155,7 @@
      "--kv",
      "int8",
      "--kv-resident",
-     "32768",
-     "--prompt-cache-spread"
+     "32768"
     ],
     "cwd": "<REPO>",
     "tokenizer": "<ROOT>/data/packs/iq3_s/tokenizer",
@@ -196,8 +195,7 @@
      "--kv",
      "int8",
      "--kv-resident",
-     "32768",
-     "--prompt-cache-spread"
+     "32768"
     ],
     "env_set": {
      "GGML_NO_BACKTRACE": "1",

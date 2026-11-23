@@ -697,12 +697,6 @@ def derive_config(base: dict, s: S.LaunchSettings, *, bool_flags: frozenset[str]
         cfg["log"] = log
     apply_cards(cfg, gpus)
     from strata_control import drafting as _drafting
-    exe_low = str(cfg.get("exe") or "").replace("\\", "/").rsplit("/", 1)[-1].lower()
-    is_inkling = (cfg.get("arch") == "inkling2_loop" or cfg.get("exe") == "component:strata-inkling"
-                  or exe_low.startswith("strata-inkling") or s.family == "inkling-2-mini")
-    is_hy4 = (cfg.get("arch") == "hy4flash" or cfg.get("exe") == "component:strata-hy4"
-              or exe_low.startswith("strata-hy4") or s.family == "hy4-flash")
-    is_native_strata = is_inkling or is_hy4
     drafting_off = _drafting.normalize(chosen if chosen is not None else cfg.get("drafting")) == "off"
     if s.mtp == "off" or drafting_off:                       # no draft layer for this launch (serve/server.py applies "mtp": false at every start)
         from strata_control import draft_layer              # --drafting off: the written file carries no --mtp either (it was left in before)
@@ -713,14 +707,6 @@ def derive_config(base: dict, s: S.LaunchSettings, *, bool_flags: frozenset[str]
     if cfg.get("backend") == "sycl":                         # exactly two Arc B-series cards: --spec 2 (strata_control/intel_spec.py); the person's
         from strata_control import intel_spec                # own choices (user_args, an extra option below) come after it and win
         intel_spec.apply_for_launch(cfg)
-    # fork: backport of upstream 00810bdd9 (2026-11-23, post-v0.2.20) - v0.2.20 shipped the app/host --prompt-cache-spread
-    # default (#6469) without the matching launch-path alignment, so the snapshot lane's entry-point-agreement tests failed
-    # on every cell (runs 45111684173 + 45114990460, linux+windows identical). Self-heals on the v0.2.21 merge.
-    if not is_native_strata and isinstance(cfg.get("args"), list):
-        if cfg.get("prompt_cache_spread") is False:
-            cfg["args"] = [a for a in cfg["args"] if a != "--prompt-cache-spread"]
-        elif "--prompt-cache-spread" not in cfg["args"]:
-            cfg["args"] = [*cfg["args"], "--prompt-cache-spread"]
     word_flags = S.WORD_VALUE_FLAGS
     a_changes, e_changes = S.as_argv_changes(s.extra, bool_flags, word_flags) if s.extra else ({}, {})
     server_set = take_server_options(a_changes)              # a server setting (--set idle-unload=...) never rides to the engine

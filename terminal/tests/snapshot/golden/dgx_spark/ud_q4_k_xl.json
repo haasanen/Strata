@@ -195,8 +195,7 @@
      "--mtp-hnorm",
      "stream",
      "--resident-budget-gib",
-     "48",
-     "--prompt-cache-spread"
+     "48"
     ],
     "cwd": "<REPO>",
     "tokenizer": "<ROOT>/data/packs/ud_q4_k_xl/tokenizer",
@@ -230,7 +229,6 @@
      "--mmap-experts",
      "--resident-budget-gib",
      "48",
-     "--prompt-cache-spread",
      "--draft",
      "dflash2",
      "--draft-model",

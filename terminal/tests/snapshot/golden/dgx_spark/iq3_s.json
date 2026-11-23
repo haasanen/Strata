@@ -194,8 +194,7 @@
      "--mtp-q4",
      "all",
      "--mtp-hnorm",
-     "stream",
-     "--prompt-cache-spread"
+     "stream"
     ],
     "cwd": "<REPO>",
     "tokenizer": "<ROOT>/data/packs/iq3_s/tokenizer",
@@ -229,7 +228,6 @@
      "--kv",
      "int8",
      "--mmap-experts",
-     "--prompt-cache-spread",
      "--draft",
      "dflash2",
      "--draft-model",

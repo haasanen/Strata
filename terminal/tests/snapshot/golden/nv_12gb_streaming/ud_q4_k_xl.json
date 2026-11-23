@@ -168,8 +168,7 @@
      "--kv-resident",
      "32768",
      "--resident-budget-gib",
-     "24",
-     "--prompt-cache-spread"
+     "24"
     ],
     "cwd": "<REPO>",
     "tokenizer": "<ROOT>/data/packs/ud_q4_k_xl/tokenizer",
@@ -204,7 +203,6 @@
      "32768",
      "--resident-budget-gib",
      "24",
-     "--prompt-cache-spread",
      "--draft",
      "dflash2",
      "--draft-model",
