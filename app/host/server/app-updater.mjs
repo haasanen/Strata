@@ -1,7 +1,7 @@
 /**
  * The App Host's client of the desktop shell's update bridge.
  *
- * The desktop app updates itself with Tauri's signed updater, which lives in the Rust shell (apps/desktop/src-tauri). The
+ * The desktop app updates itself with Tauri's signed updater, which lives in the Rust shell (app/desktop/src-tauri). The
  * UI is served by this host, so it cannot call the shell directly; the shell opens a loopback listener, protected by a
  * random token it hands only to this host (STRATA_SHELL_BRIDGE, STRATA_SHELL_TOKEN), and this module is its client.
  * Outside the desktop app (a browser, a test, a source checkout) there is no bridge and `createAppUpdater` returns null.
@@ -20,14 +20,18 @@ export function createAppUpdater({ env = process.env, fetcher = fetch, sleep = m
   const base = env.STRATA_SHELL_BRIDGE;
   const token = env.STRATA_SHELL_TOKEN;
   if (!base || !token || !/^http:\/\/127\.0\.0\.1:\d+$/.test(base)) return null;
-  async function call(path, method = 'GET', timeoutMs = 120_000) {
+  async function call(path, method = 'GET', timeoutMs = 120_000, fallback = 'The Strata app could not check for updates') {
     const response = await fetcher(`${base}${path}`, { method, headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(timeoutMs) });
     let body = null;
     try { body = await response.json(); } catch { /* no body */ }
-    if (!response.ok) throw new Error(body?.error ?? `The Strata app could not check for updates (${response.status}).`);
+    if (!response.ok) throw new Error(body?.error ?? `${fallback} (${response.status}).`);
     return body;
   }
   return {
+    openHelper: (sessionId, helperId, name) => call(
+      `/shell/helper?${new URLSearchParams({ sessionId, helperId, name })}`, 'POST', 10_000,
+      'The Strata app could not open the helper window',
+    ),
     /** { available, version, current, notes } from the shell's updater (signature-verified metadata). */
     check: () => call('/app-update/check'),
     /**

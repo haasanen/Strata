@@ -22,6 +22,7 @@ Docker on a **Mac** has no access to the Mac's graphics chip (no Metal): use the
 | AMD **RX 9000** series and Radeon AI PRO R9700 (RDNA 4, gfx1200 / gfx1201) | `0.2.7-rocm-gfx120x` | the `amdgpu` kernel driver (Linux 6.8+) |
 | AMD **RX 7000** series (RDNA 3, gfx1100 / gfx1101 / gfx1102) | `0.2.7-rocm-gfx110x` | the `amdgpu` kernel driver |
 | AMD **Ryzen AI Max** ("Strix Halo", Radeon 8060S, gfx1151) | `0.2.7-rocm-gfx1151` | the `amdgpu` kernel driver |
+| AMD **Ryzen AI 300 / 7040 / 8040** (Radeon 890M / 880M / 780M, gfx1150 / gfx1103) | `0.2.7-rocm-igpu` | the `amdgpu` kernel driver |
 | Intel **Arc** A-series and B-series (including Arc Pro B70) | `0.2.7-sycl` (if no image exists for a release, [build it](#build-it-yourself)) | the `i915` or `xe` kernel driver; **prepared model files** (see [Intel](#intel-arc)) |
 
 **Measured on:** the 0.2.16 images (engine 0.1.62), pulled with Podman. Size on disk: `cuda13` 1.32 GB, `cuda12` 1.65 GB,
@@ -122,7 +123,7 @@ screens; leave out what you do not care about.
 | `VISION` | `off`, `on` (the model reads pictures), `gpu`, `cpu`; the picture-reader file (about 0.9 GB) is downloaded with the model | `off` |
 | `KV` | conversation memory format: `int8`, `q4_0` (half the memory), `k8v4`, `fp16` | `int8` |
 | `DRAFTING` | which drafter guesses ahead: `auto`, `mtp`, `dflash2` or `off` | `auto` |
-| `DRAFT_VOCAB` | which tokens the drafter may guess: `cjk` (with Chinese, Japanese and Korean), `en`, `cyrillic`, `fr` or `latin` (each with English and code) | picked from the container's languages, else `cjk` |
+| `DRAFT_VOCAB` | which tokens the drafter may guess: `cjk` (with Chinese, Japanese and Korean), `en`, `cyrillic`, `fr`, `latin` or `arabic` (each with English and code) | picked from the container's languages, else `cjk` |
 | `GPU` / `GPUS` | card numbers as the monitor lists them, `0` or `0,1`; empty or `all` = the engine's choice. Changing it later makes the model's run settings again (the files stay) | all that fit |
 | `GPU_ROLES` | a role for each card, `1=main,0=helper` (`main`, `helper`, `off`; cards you do not name are off; not together with `GPU` / `GPUS`). Passed to `launch --gpu-roles`; see [MULTI_GPU.md](MULTI_GPU.md) | none |
 | `TUNE` | `quick` (runtime depends on hardware and workload), `thorough`, `skip`; done once and kept in the preset (`RETUNE=1` tunes again) | `skip` |
@@ -360,13 +361,19 @@ to the system or the graphics driver (`tools/packaging/binary_deps.py`); finally
 library inside the finished image. A package that fails any of these stops the build. Nothing is pushed anywhere.
 `tools/docker/smoke-test.sh` runs the checks we ran on real cards (serves, key, chat, tool call, monitor, clean stop, memory freed, restart); see its first lines for the variables.
 
-**From source.** `docker build -t strata:src --build-arg STRATA_COMMIT=$(git rev-parse HEAD) .` in the repository compiles the CUDA 13
-engine inside Docker, makes the package and puts it in the same kind of image (`--build-arg CUDA_ARCHITECTURES=89` for one card only,
-much faster). `.git` is not copied into the build, so the commit comes in as `STRATA_COMMIT`; without it the Terminal stage stops.
+**From source.** `docker build -t strata:src --build-arg STRATA_COMMIT=$(git rev-parse HEAD) -f tools/docker/Dockerfile.src .` in the
+repository compiles the CUDA 13 engine inside Docker, makes the package and puts it in the same kind of image
+(`--build-arg CUDA_ARCHITECTURES=89` for one card only, much faster). The source Dockerfile is not the ready-made image's one, so it is
+named with `-f`; the build then takes its ignore list from `tools/docker/Dockerfile.src.dockerignore`. `.git` is not copied into the build,
+so the commit comes in as `STRATA_COMMIT`; without it the Terminal stage stops.
 For a GTX 10, P100 or V100 build the CUDA 12 variant: `docker build -t strata:src-cuda12 --build-arg STRATA_COMMIT=$(git rev-parse HEAD)
---build-arg CUDA_IMAGE=nvidia/cuda:12.9.1-devel-ubuntu24.04 --build-arg CUDA_ARCHITECTURES="60;61;70;75;80;86;89" --build-arg BUILD_VISION=0 .`
+-f tools/docker/Dockerfile.src --build-arg CUDA_IMAGE=nvidia/cuda:12.9.2-devel-ubuntu24.04 --build-arg CUDA_ARCHITECTURES="60;61;70;75;80;86;89" .`
 (the build turns on the Pascal / Volta code by itself when an architecture below 75 is listed, and names the package `cuda12` with
-driver 575.51). For AMD and Intel builds from source see [AMD_HIP.md](AMD_HIP.md) and [INTEL.md](INTEL.md); then package the result
+driver 575.51). The picture reader comes with it: it is built for the same architectures as the engine (native `sm_60` / `sm_61` code, not
+only PTX), and `--build-arg BUILD_VISION=0` leaves it out for a text-only package. The CUDA 12 reader was checked on a Tesla P40 (sm_61,
+driver 580.178.04) on 2026-11-15: with `--tower own` it loaded on the card and read one 1,024-token picture in 12.6 s, and on a Tesla P100
+(sm_60) and a Tesla V100 (sm_70) on 2026-11-16, where the image also served a model and answered a picture over its API. For AMD and Intel
+builds from source see [AMD_HIP.md](AMD_HIP.md) and [INTEL.md](INTEL.md); then package the result
 with `tools/packaging/package_engine.py` and use `tools/docker/build.sh`.
 
 ## Publishing the images (for maintainers)
