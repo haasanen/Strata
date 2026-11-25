@@ -30,7 +30,7 @@ jobs:
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
           fetch-depth: 10
@@ -311,7 +311,7 @@ jobs:
       HF_STRATA: https://huggingface.co/strata-engine/Inkling-2-Mini-Strata/resolve/main
       HF_UNSLOTH: https://huggingface.co/unsloth/Inkling-2-Mini-GGUF/resolve/main
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
           fetch-depth: 1
@@ -382,7 +382,7 @@ jobs:
 
       - name: 4. Logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: b70-inkling-logs
           path: ${{ runner.temp }}/b70-ink/logs
@@ -402,7 +402,7 @@ jobs:
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
           fetch-depth: 20
@@ -428,7 +428,7 @@ jobs:
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           persist-credentials: false
           fetch-depth: 20
