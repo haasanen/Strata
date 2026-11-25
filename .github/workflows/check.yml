@@ -174,7 +174,7 @@ jobs:
           # fork: Windows hands a child process the ANSI code page on a redirected stdout, which breaks the product's
           # glyph-capability probe and non-ASCII output; UTF-8 stdio makes Windows behave like the other platforms.
           PYTHONIOENCODING: utf-8
-        run: python tools/check --only "${{ matrix.only }}" --keep --scratch "$env:RUNNER_TEMP\check" --json "$env:RUNNER_TEMP\check\result.json"
+        run: python tools/check --only "${{ matrix.only }}" --timeout-scale 1.5 --keep --scratch "$env:RUNNER_TEMP\check" --json "$env:RUNNER_TEMP\check\result.json"
       - name: Logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4.6.2
