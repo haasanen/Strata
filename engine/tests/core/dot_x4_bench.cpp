@@ -21,8 +21,8 @@ static double now_s() {
 }
 
 static void bench_type(Type wt, Type at, int n, size_t total_bytes, const char* regime) {
-    const TypeInfo* wi = type_info(wt);
-    const TypeInfo* ai = type_info(at);
+    const TypeInfo* wi = strata::quant::type_info(wt);
+    const TypeInfo* ai = strata::quant::type_info(at);
     const DotKernel* k1 = dot_kernel(wt, Arith::Avx2);
     const DotX4Kernel* k4 = dot_x4_kernel(wt, Arith::Avx2);
     if (wi == nullptr || ai == nullptr || k1 == nullptr || k4 == nullptr) {
