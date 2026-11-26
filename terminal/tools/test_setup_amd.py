@@ -780,7 +780,9 @@ class RocmSplitLayout(unittest.TestCase):
 
     def prefix(self, d, *, hipcc=True, libs=("lib64/libhipblas.so.3",), dev=True, version=(7, 2)):
         p = Path(d)
-        rels = (["bin/hipcc"] if hipcc else []) + list(libs)
+        # the .exe twin too: shutil.which on Windows only names PATHEXT candidates, so an extensionless
+        # bin/hipcc alone is invisible to the PATH probe there (a real Windows ROCm ships hipcc.exe anyway)
+        rels = (["bin/hipcc", "bin/hipcc.exe"] if hipcc else []) + list(libs)
         if dev:
             rels += ["lib64/cmake/hip-lang/hip-lang-config.cmake", "include/hip/hip_runtime.h"]
         if version:
