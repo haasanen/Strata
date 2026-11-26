@@ -188,15 +188,16 @@
      "--kv",
      "int8",
      "--resident-budget-gib",
-     "48",
-     "--prompt-cache-spread"
+     "48"
     ],
     "env_set": {
      "GGML_NO_BACKTRACE": "1",
      "MALLOC_ARENA_MAX": "2",
      "STRATA_ROUTE_TAIL_SKIP": "0"
     },
-    "notes": []
+    "notes": [
+     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+    ]
    }
   },
   "app_plain": {
@@ -295,15 +296,16 @@
      "--kv",
      "int8",
      "--resident-budget-gib",
-     "48",
-     "--prompt-cache-spread"
+     "48"
     ],
     "env_set": {
      "GGML_NO_BACKTRACE": "1",
      "MALLOC_ARENA_MAX": "2",
      "STRATA_ROUTE_TAIL_SKIP": "0"
     },
-    "notes": []
+    "notes": [
+     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+    ]
    }
   },
   "app_models": {
@@ -403,15 +405,16 @@
      "--kv",
      "int8",
      "--resident-budget-gib",
-     "48",
-     "--prompt-cache-spread"
+     "48"
     ],
     "env_set": {
      "GGML_NO_BACKTRACE": "1",
      "MALLOC_ARENA_MAX": "2",
      "STRATA_ROUTE_TAIL_SKIP": "0"
     },
-    "notes": []
+    "notes": [
+     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+    ]
    }
   }
  }

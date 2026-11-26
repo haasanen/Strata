@@ -89,14 +89,15 @@
      "--max-context",
      "131072",
      "--kv",
-     "int8",
-     "--prompt-cache-spread"
+     "int8"
     ],
     "env_set": {
      "GGML_NO_BACKTRACE": "1",
      "STRATA_ROUTE_TAIL_SKIP": "0"
     },
-    "notes": []
+    "notes": [
+     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+    ]
    }
   },
   "app_plain": {
@@ -195,14 +196,15 @@
      "--max-context",
      "131072",
      "--kv",
-     "int8",
-     "--prompt-cache-spread"
+     "int8"
     ],
     "env_set": {
      "GGML_NO_BACKTRACE": "1",
      "STRATA_ROUTE_TAIL_SKIP": "0"
     },
-    "notes": []
+    "notes": [
+     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+    ]
    }
   },
   "app_models": {
@@ -302,14 +304,15 @@
      "--max-context",
      "131072",
      "--kv",
-     "int8",
-     "--prompt-cache-spread"
+     "int8"
     ],
     "env_set": {
      "GGML_NO_BACKTRACE": "1",
      "STRATA_ROUTE_TAIL_SKIP": "0"
     },
-    "notes": []
+    "notes": [
+     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+    ]
    }
   }
  }
