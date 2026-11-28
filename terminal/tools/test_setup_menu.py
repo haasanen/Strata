@@ -22,7 +22,7 @@ import setup  # noqa: E402
 class FamilyOrder(unittest.TestCase):
     def test_the_menu_order_on_nvidia(self):
         fams = setup.menu_families(False) + list(setup.OWN_PATH_FAMILIES)
-        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro", "nvfp4", "abliterated", "qwen36"])  # fork patch: abliterated (SC117) added after nvfp4
+        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro", "nvfp4", "abliterated", "qwen36", "ornith"])  # fork patch: abliterated (SC117) added after nvfp4
 
     def test_the_default_stays_the_first_family(self):
         self.assertEqual(setup.menu_families(False)[0], "qwen")
