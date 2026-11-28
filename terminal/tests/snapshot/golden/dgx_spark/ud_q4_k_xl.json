@@ -230,6 +230,7 @@
      "--mmap-experts",
      "--resident-budget-gib",
      "48",
+     "--prompt-cache-spread",
      "--draft",
      "dflash2",
      "--draft-model",
@@ -250,8 +251,7 @@
     },
     "notes": [
      "[strata] drafting: DFlash2 alone (--draft dflash2, --draft-conf 0.35)",
-     "[strata] drafting: draft vocabulary: draft_vocab.bin (the default)",
-     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+     "[strata] drafting: draft vocabulary: draft_vocab.bin (the default)"
     ]
    }
   },
@@ -378,6 +378,7 @@
      "--mmap-experts",
      "--resident-budget-gib",
      "48",
+     "--prompt-cache-spread",
      "--draft",
      "dflash2",
      "--draft-model",
@@ -398,8 +399,7 @@
     },
     "notes": [
      "[strata] drafting: DFlash2 alone (--draft dflash2, --draft-conf 0.35)",
-     "[strata] drafting: draft vocabulary: draft_vocab.bin (the default)",
-     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+     "[strata] drafting: draft vocabulary: draft_vocab.bin (the default)"
     ]
    }
   },
@@ -511,6 +511,7 @@
      "--mmap-experts",
      "--resident-budget-gib",
      "48",
+     "--prompt-cache-spread",
      "--draft",
      "dflash2",
      "--draft-model",
@@ -531,8 +532,7 @@
     },
     "notes": [
      "[strata] drafting: DFlash2 alone (--draft dflash2, --draft-conf 0.35)",
-     "[strata] drafting: draft vocabulary: draft_vocab.bin (the default)",
-     "[strata] This engine does not support spreading prompt cache checkpoints, so it uses its usual checkpoint policy."
+     "[strata] drafting: draft vocabulary: draft_vocab.bin (the default)"
     ]
    }
   }
